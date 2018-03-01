@@ -1,0 +1,23 @@
+Package: Rmmquant
+Type: Package
+Title: RNA-Seq multi-mapping Reads Quantification Tool
+Version: 0.99.0
+Date: 2017-12-08
+Authors@R: person("Zytnicki", "Matthias", email = "matthias.zytnicki@inra.fr",
+  role = c("aut", "cre"))
+Maintainer: Matthias Zytnicki <matthias.zytnicki@inra.fr>
+Description: Counts the number of reads per gene.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Depends: R (>= 3.4)
+SystemRequirements: C++11
+Imports:
+    Rcpp (>= 0.12.8),
+    methods,
+    utils,
+    devtools,
+    BiocStyle
+LinkingTo: Rcpp
+RoxygenNote: 6.0.1
+Suggests: testthat
