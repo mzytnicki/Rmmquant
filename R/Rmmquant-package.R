@@ -3,7 +3,7 @@
 #' Counts the number of reads per gene.
 #'
 #' @docType package
-#' @name srnadiff
+#' @name Rmmquant
 #'
 #' @author Matthias Zytnicki, \email{matthias.zytnicki@@inra.fr}
 #'

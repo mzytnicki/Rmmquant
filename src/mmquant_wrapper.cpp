@@ -1,22 +1,43 @@
 #include <Rcpp.h>
-#include "mmquant.h"
+#include "mmquantParameters.h"
 
 using namespace Rcpp;
 
 // [[Rcpp::plugins(cpp11)]]
 
+NumericMatrix rStart (MmquantParameters &parameters);
+
+// Expose the classes
+RCPP_MODULE(RmmquantParameters_module) {
+    using namespace Rcpp;
+    
+  class_<MmquantParameters>("RmmquantParameters")
+    .default_constructor("Default constructor")
+    .method("setGtfFileName",         &MmquantParameters::setGtfFileName)
+    .method("addReadsFileName",       &MmquantParameters::addReadsFileName)
+    .method("addName",                &MmquantParameters::addName)
+    .method("setOverlap",             &MmquantParameters::setOverlap)
+    .method("addStrand",              &MmquantParameters::addStrand)
+    .method("addSort",                &MmquantParameters::addSort)
+    .method("setCountThreshold",      &MmquantParameters::setCountThreshold)
+    .method("setMergeThreshold",      &MmquantParameters::setMergeThreshold)
+    .method("setPrintGeneName",       &MmquantParameters::setPrintGeneName)
+    .method("setQuiet",               &MmquantParameters::setQuiet)
+    .method("setProgress",            &MmquantParameters::setProgress)
+    .method("setNThreads",            &MmquantParameters::setNThreads)
+    .method("addFormat",              &MmquantParameters::addFormat)
+    .method("setNOverlapDifference",  &MmquantParameters::setNOverlapDifference)
+    .method("setPcOverlapDifference", &MmquantParameters::setPcOverlapDifference)
+    .method("parse",                  &MmquantParameters::parse)
+  ;
+  
+  function("rStart", &rStart);
+}
+
+#include "mmquant.h"
+
 
 /*
-RCPP_MODULE(Parameters_module) {
-  using namespace Rcpp;
- 
-  class_<Parameters>( "Parameters")
-    .default_constructor("Default constructor")
-    .method("setGtfFileName", &Parameters::setGtfFileName)
-  ;
-}
-*/
-
 Parameters parameters;
 
 //' This is stuff
@@ -141,3 +162,27 @@ NumericMatrix start () {
     rownames(matrix) = genes;
     return matrix;
 }
+*/
+
+/*
+NumericMatrix rStart (MmquantParameters &parameters) {
+	start(parameters);
+    auto table        = getTable(parameters);
+    auto &sampleNames = table.first;
+    auto &rest        = table.second;
+    NumericMatrix matrix(rest.size(), sampleNames.size());
+    CharacterVector genes(rest.size()), samples(sampleNames.size());
+    for (size_t i = 0; i < sampleNames.size(); ++i) {
+        samples[i] = sampleNames[i];
+    }
+    for (size_t i = 0; i < rest.size(); ++i) {
+        auto         &line = rest[i];
+        NumericVector l    = wrap(line.second);
+        genes[i]           = line.first;
+        matrix.row(i)      = l;
+    }
+    colnames(matrix) = samples;
+    rownames(matrix) = genes;
+    return matrix;
+}
+*/

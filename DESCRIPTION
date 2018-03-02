@@ -10,14 +10,12 @@ Description: Counts the number of reads per gene.
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
-Depends: R (>= 3.4)
 SystemRequirements: C++11
+Depends:
+    Rcpp (>= 0.12.8)
 Imports:
-    Rcpp (>= 0.12.8),
-    methods,
-    utils,
-    devtools,
-    BiocStyle
+    Rcpp (>= 0.12.8)
 LinkingTo: Rcpp
+RcppModules: RmmquantParameters_module
 RoxygenNote: 6.0.1
 Suggests: testthat
