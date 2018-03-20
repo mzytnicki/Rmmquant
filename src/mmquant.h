@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <iostream>
 #include <queue>
 #include <unordered_map>
+#include <array>
 #include <thread>
 #include <atomic>
 #include <fstream>
@@ -1446,7 +1447,7 @@ class GeneList {
                 Position start = rangesStart[iRanges];
                 Position end   = start + rangesWidth[iRanges] - 1;
         		gene.addExon(start, end, thisStrand, thisSeqname - 1);
-        		if (iRanges + 1 == ends[iPartition]) {
+        		if (iRanges + 1 == static_cast<unsigned int>(ends[iPartition])) {
         		    genes.push_back(gene);
             		++iPartition;
             		if (iPartition < names.size()) {
@@ -1976,15 +1977,15 @@ Rcpp::List rcpp_Rmmquant (
         tmp = format;
         parameters.addFormat(tmp);
     }
-    if (overlap        != NA_REAL)    parameters.setOverlap(overlap);
-    if (countThreshold != NA_INTEGER) parameters.setCountThreshold(countThreshold);
-    if (mergeThreshold != NA_REAL)    parameters.setMergeThreshold(mergeThreshold);
-    if (printGeneName  != NA_LOGICAL) parameters.setPrintGeneName(printGeneName);
-    if (quiet          != NA_LOGICAL) parameters.setQuiet(quiet);
-    if (progress       != NA_LOGICAL) parameters.setProgress(progress);
-    if (nThreads       != NA_INTEGER) parameters.setNThreads(nThreads);
-    if (nOverlapDiff   != NA_INTEGER) parameters.setNOverlapDifference(nOverlapDiff);
-    if (pcOverlapDiff  != NA_REAL)    parameters.setPcOverlapDifference(pcOverlapDiff);
+    if (overlap                          != NA_REAL)    parameters.setOverlap(overlap);
+    if (static_cast<int>(countThreshold) != NA_INTEGER) parameters.setCountThreshold(countThreshold);
+    if (mergeThreshold                   != NA_REAL)    parameters.setMergeThreshold(mergeThreshold);
+    if (printGeneName                    != NA_LOGICAL) parameters.setPrintGeneName(printGeneName);
+    if (quiet                            != NA_LOGICAL) parameters.setQuiet(quiet);
+    if (progress                         != NA_LOGICAL) parameters.setProgress(progress);
+    if (static_cast<int>(nThreads)       != NA_INTEGER) parameters.setNThreads(nThreads);
+    if (nOverlapDiff                     != NA_INTEGER) parameters.setNOverlapDifference(nOverlapDiff);
+    if (pcOverlapDiff                    != NA_REAL)    parameters.setPcOverlapDifference(pcOverlapDiff);
     start(parameters);
     Rcpp::NumericMatrix matrix(outputTable.size(), parameters.names.size());
     Rcpp::CharacterVector rowNames(outputTable.size()), colNames(parameters.names.size());
