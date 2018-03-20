@@ -5,11 +5,47 @@
 
 using namespace Rcpp;
 
-
-RcppExport SEXP _rcpp_module_boot_RmmquantParameters_module();
+// rcpp_parseGenomicRanges
+void rcpp_parseGenomicRanges(Rcpp::S4& genomicRanges);
+RcppExport SEXP _Rmmquant_rcpp_parseGenomicRanges(SEXP genomicRangesSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::S4& >::type genomicRanges(genomicRangesSEXP);
+    rcpp_parseGenomicRanges(genomicRanges);
+    return R_NilValue;
+END_RCPP
+}
+// rcpp_Rmmquant
+Rcpp::List rcpp_Rmmquant(Rcpp::String& annotationFile, Rcpp::StringVector& readsFiles, Rcpp::S4& genomicRanges, Rcpp::S4& genomicRangesList, Rcpp::StringVector& sampleNames, float overlap, Rcpp::StringVector& strands, Rcpp::LogicalVector& sorts, unsigned int countThreshold, float mergeThreshold, bool printGeneName, bool quiet, bool progress, unsigned int nThreads, Rcpp::StringVector& formats, int nOverlapDiff, float pcOverlapDiff);
+RcppExport SEXP _Rmmquant_rcpp_Rmmquant(SEXP annotationFileSEXP, SEXP readsFilesSEXP, SEXP genomicRangesSEXP, SEXP genomicRangesListSEXP, SEXP sampleNamesSEXP, SEXP overlapSEXP, SEXP strandsSEXP, SEXP sortsSEXP, SEXP countThresholdSEXP, SEXP mergeThresholdSEXP, SEXP printGeneNameSEXP, SEXP quietSEXP, SEXP progressSEXP, SEXP nThreadsSEXP, SEXP formatsSEXP, SEXP nOverlapDiffSEXP, SEXP pcOverlapDiffSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::String& >::type annotationFile(annotationFileSEXP);
+    Rcpp::traits::input_parameter< Rcpp::StringVector& >::type readsFiles(readsFilesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::S4& >::type genomicRanges(genomicRangesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::S4& >::type genomicRangesList(genomicRangesListSEXP);
+    Rcpp::traits::input_parameter< Rcpp::StringVector& >::type sampleNames(sampleNamesSEXP);
+    Rcpp::traits::input_parameter< float >::type overlap(overlapSEXP);
+    Rcpp::traits::input_parameter< Rcpp::StringVector& >::type strands(strandsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::LogicalVector& >::type sorts(sortsSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type countThreshold(countThresholdSEXP);
+    Rcpp::traits::input_parameter< float >::type mergeThreshold(mergeThresholdSEXP);
+    Rcpp::traits::input_parameter< bool >::type printGeneName(printGeneNameSEXP);
+    Rcpp::traits::input_parameter< bool >::type quiet(quietSEXP);
+    Rcpp::traits::input_parameter< bool >::type progress(progressSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type nThreads(nThreadsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::StringVector& >::type formats(formatsSEXP);
+    Rcpp::traits::input_parameter< int >::type nOverlapDiff(nOverlapDiffSEXP);
+    Rcpp::traits::input_parameter< float >::type pcOverlapDiff(pcOverlapDiffSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_Rmmquant(annotationFile, readsFiles, genomicRanges, genomicRangesList, sampleNames, overlap, strands, sorts, countThreshold, mergeThreshold, printGeneName, quiet, progress, nThreads, formats, nOverlapDiff, pcOverlapDiff));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_rcpp_module_boot_RmmquantParameters_module", (DL_FUNC) &_rcpp_module_boot_RmmquantParameters_module, 0},
+    {"_Rmmquant_rcpp_parseGenomicRanges", (DL_FUNC) &_Rmmquant_rcpp_parseGenomicRanges, 1},
+    {"_Rmmquant_rcpp_Rmmquant", (DL_FUNC) &_Rmmquant_rcpp_Rmmquant, 17},
     {NULL, NULL, 0}
 };
 

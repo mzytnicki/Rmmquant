@@ -1,0 +1,3 @@
+1	S-MART	transcript	3532007	3532057	.	-	.	quality=1;overlapsWith=RP23-115I1.2-001;bestRegion=(self);nbGaps=0;nbOverlaps=1;nbOccurrences=1;nbMismatches=0.000000;ID=SRR1528711.18848248;identity=100.000000;Name=SRR1528711.18848248
+1	S-MART	transcript	3532007	3532057	.	-	.	quality=1;overlapsWith=RP23-115I1.2-001;bestRegion=(self);nbGaps=0;nbOverlaps=1;nbOccurrences=1;nbMismatches=0.000000;ID=SRR1528711.32284053;identity=100.000000;Name=SRR1528711.32284053
+1	S-MART	transcript	3532014	3532064	.	-	.	quality=1;overlapsWith=RP23-115I1.2-001;bestRegion=(self);nbGaps=0;nbOverlaps=1;nbOccurrences=1;nbMismatches=0.000000;ID=SRR1528711.25101942;identity=100.000000;Name=SRR1528711.25101942

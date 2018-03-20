@@ -7,6 +7,11 @@
 #'
 #' @author Matthias Zytnicki, \email{matthias.zytnicki@@inra.fr}
 #'
+#' @import GenomicRanges
+#' @import devtools
+#' @import BiocStyle
+#' @importFrom methods is
+#' @importFrom methods new
 #' @importFrom Rcpp evalCpp
 #' @useDynLib Rmmquant
 NULL

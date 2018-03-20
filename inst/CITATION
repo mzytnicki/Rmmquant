@@ -1,0 +1,13 @@
+citEntry(entry="article",
+         title = "mmQuant: How to count multi-mapping reads?",
+         author = personList(as.person("Matthias Zytnicki")),
+         year = 2017,
+         journal = "BMC Bioinformatics",
+         doi = "10.1186/s12859-017-1816-4",
+         volume = 18,
+         number = 1,
+         pages = 411,
+         textVersion = 
+         paste("Zytnicki, M.", 
+               "mmQuant: How to count multi-mapping reads?",
+               "BMC Bioinformatics 18(1):411 (2017)"))

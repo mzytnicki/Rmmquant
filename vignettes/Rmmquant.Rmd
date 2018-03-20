@@ -1,0 +1,322 @@
+---
+title: "The Rmmquant package"
+author: "Matthias Zytnicki"
+date: "`r BiocStyle::doc_date()`"
+package: "`r BiocStyle::pkg_ver('Rmmquant')`"
+output: rmarkdown::html_vignette
+bibliography: references.bib
+vignette: >
+  %\VignetteIndexEntry{The Rmmquant package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup_knitr, include = FALSE, cache = FALSE}
+library("Rmmquant")
+library("BiocStyle")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 5, fig.height = 5)
+```
+
+The aim of Rmmquant is to quantify the expression of the genes.
+It is similar to
+[featureCounts](http://bioinf.wehi.edu.au/featureCounts/) [@subread]
+and `r Biocpkg("Rsubread")`, or
+[HTSeq-counts](https://htseq.readthedocs.io) [@htseqcount]
+and the `countOverlaps` of `r Biocpkg("GenomicRanges")`.
+
+The main difference with other approaches is that Rmmquant explicitely handles
+multi-mapping reads, in a way described by [@watson].
+
+
+## Rmmquant in a nutshell
+
+The easiest method to get the expression of the genes stored in a GTF file,
+using RNA-Seq data stored in a BAM file is:
+```{r, first}
+dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
+gtfFile <- file.path(dir, "test.gtf")
+bamFile <- file.path(dir, "test.bam")
+output <- RmmquantRun(gtfFile, bamFile)
+counts(output)
+```
+In this example, the output is a matrix, where the columns are the samples
+(here, only `test.bam`), and the rows the gene counts (here, only `gene_A`).
+
+Rmmquant expects at least two kinds of data:
+
+* annotation
+* reads
+
+Rmmquant provides a count table, as well as some basic statistics on the read
+assignment.
+
+Many aspects of Rmmquant can be controlled with parameters.
+
+All these notions are detailed here.
+
+
+## Package
+
+The Rmmquant package only consist in:
+
+* the `RmmquantRun` function, that supports the options described hereafter,
+* the slot accessors `counts` and `stats`, that provide access to the count
+    table and the statistics of the alignment.
+
+
+## Inputs
+
+### Annotation
+
+#### Annotation file
+
+The annotation file should be in GTF. GFF might work too.
+The tool only uses the gene/transcript/exon types.
+
+
+#### Annotation structure
+
+Alternatively, the structure can be given using `r Biocpkg("GenomicRanges")`,
+or `r Biocpkg("GenomicRangesList")`.
+
+When a `r Biocpkg("GenomicRanges")` is provided, the quantification will be
+performed on each element of the `r Biocpkg("GenomicRanges")`.
+
+When a `r Biocpkg("GenomicRangesList")` is provided, the quantification will be
+performed on each element too, i.e. on each `r Biocpkg("GenomicRanges")`.
+Implicitely, each `r Biocpkg("GenomicRanges")` of a
+`r Biocpkg("GenomicRangesList")` is interpreted as a series of exons, and only
+the transcript (or the gene) will be quantified.
+
+
+### Reads files
+
+One or several reads files can be given.
+
+The reads should be given in SAM or BAM format, and preferably be sorted by
+position, but it is not compulsory.
+The reads can be single end or paired-end (or a mixture thereof).
+
+You can use the [samtools](http://www.htslib.org/) [@samtools] or the
+`r Biocpkg("Rsamtools")` to sort them. Rmmquant uses the `NH` flag
+(that provides the number of hits for each read, see the
+[SAM format specification](https://samtools.github.io/hts-specs/SAMv1.pdf)),
+so be sure that your mapping tool sets it adequately
+(yes, 
+[TopHat2](http://ccb.jhu.edu/software/tophat/index.shtml) [@tophat2]
+and
+[STAR](https://github.com/alexdobin/STAR) [@star]
+do it fine).
+You should also check how your mapping tool handles multi-mapping reads
+(this can usually be tuned using the appropriate parameters).
+
+
+## Outputs
+
+### Counts
+
+The count table can be accessed using the `counts` method:
+```{r, counts}
+counts(output)
+```
+
+The count table is a numeric matrix output is a tab-separated file, to be use in
+`r Biocpkg("DESeq2")` [@deseq2], for instance, using the
+`DESeqDataSetFromMatrix` function.
+
+If the user provided $n$ reads files, the output will contain $n$ columns:
+
+Gene            | sample_1 | sample_2 | ...
+----------------|----------|----------|----
+gene_A          | ...      | ...      | ...
+gene_B          | ...      | ...      | ...
+gene_B--gene_C  | ...      | ...      | ...
+
+The row names are the ID of the genes/features.
+The column names are the sample names.
+If a read maps several genes (say, `gene_B` and `gene_C`), a new feature is
+added to the matrix, `gene_B--gene_C`.
+The reads that can be mapped to these genes will be counted there
+(but not in the `gene_B` nor `gene_C` lines).
+
+
+### Statistics
+
+The statistics can be accessed using the `stats` method:
+```{r, stats}
+stats(output)
+```
+
+This is a `data.frame`, with one column per sample.
+The content of each column is:
+
+* `n.hits`:                     the number of hits
+* `n.uniquely.mapped.reads`:    the number of uniquely mapped reads
+* `n.non.uniquely.mapped.hits`: the number of non-uniquely mapped hits
+* `n.ambiguously.mapped.hits`:  the number of hits with several corresponding
+                                    features
+* `n.unassigned.hits`:          the number of hits with no corresponding
+                                    feature
+
+Here, a hit is a possible mapping for a read.
+When a read maps several times, it means that several hits correspond to a read.
+A read may have zero, one, or several hits, which correspond to unmapped,
+uniquely mapped, and non-uniquely mapped reads.
+
+
+## Options
+
+### Count matrix options
+
+#### Row names
+
+If `printGeneName` is set to `TRUE`, the row names of the count table are the
+gene names, instead of the gene IDs.
+If two different genes have the same name, the systematic name is added,
+like: `Mat2a (ENSMUSG00000053907)`.
+
+The gene IDs and gene names should be given in the GTF file after the `gene_id`
+and `gene_name` tags respectively.
+
+
+#### Column names
+
+The column names of the count matrix should be given in the `sampleNames`.
+If not given, the column names are inferred from the file names of the SAM/BAM
+files.
+
+
+### Input options
+
+#### Library type
+
+The library types can be specified using the `strands` parameter.
+This parameter can be:
+
+* `F`: the reads are single-end, and the forward strand is sequenced,
+* `R`: the reads are single-end, and the reverse strand is sequenced,
+* `FR`: the reads are paired-end, the forward strand is sequenced first, then
+         the reverse strand,
+* `RF`, `FF`, `FF`: other similar cases,
+* `U`: the reads are single- or pair-ends, and the strand is unknown.
+
+The `strands` parameters expect one value per SAM/BAM file.
+If only one value is given, it is recycled.
+
+
+#### Reads file format.
+
+The format is usually inferred from the file name, but you can mention it
+using the `formats` option.
+
+This parameters expect one value per SAM/BAM file.
+If only one value is given, it is recycled.
+
+
+### Read assignement options
+
+#### Overlap options
+
+The way a read $R$ is mapped to a gene $A$ depends on the `overlap=`$n$ value:
+
+if $n$ is            | then $R$ is mapped to $A$ iff
+---------------------|----------------------------------------------------
+a negative value     | $R$ is included in $A$
+a positive integer   | they have at least $n$ nucleotides in common
+a float value (0, 1) | $n$% of the nucleotides of $R$ are shared with $A$
+
+
+#### Read mapping to several features.
+
+We will suppose here that the `overlap=1` strategy is used
+(i.e. a read is attributed to a gene as soon as at least 1 nucleotide overlap).
+The example can be extended to other strategies as well.
+
+If a read (say, of size 100), maps unambiguously and overlaps with gene A and B,
+it will be counted as 1 for the new "gene" `gene_A--gene_B`.
+However, suppose that only 1 nucleotide overlaps with gene A, whereas 100
+nucleotides overlap with gene B (yes, genes A and B overlap).
+You probably would like to attribute the read to gene B.
+
+The options `nOverlapDiff` and `pcOverlapDiff` control this.
+We compute the number of overlapping nucleotides between a read and the
+overlapping genes. If a read overlaps "significantly" more with one gene than
+with all the other genes, they will attribute the read to the former gene only.
+
+The option `nOverlapDiff=`$n$ computes the differences of overlapping
+nucleotides.
+Let us name $N_A$ and $N_B$ the number of overlapping nucleotides with
+genes A and B respectively.
+If $N_A \geq N_B + n$, then the read will be attributed to gene A only.
+
+The option `pcOverlapDiff=`$m$ compares the ratio of overlapping nucleotides.
+If $N_A / N_B \geq m\%$, then the read will be attributed to gene A only.
+
+If both option `nOverlapDiff=`$n$ and `pcOverlapDiff=`$m$ are used,
+then the read will be attributed to gene A only iff both
+$N_A \geq N_B + n$ and $N_A / N_B \geq m\%$.
+
+
+### Row count options
+
+#### Count threshold
+
+If the maximum number of reads for a gene is less than `countThreshold`
+(a non-negative integer), then the corresponding line is discarded.
+
+
+#### Merge threshold
+
+Sometimes, there are very few reads that can be mapped unambiguously to a
+gene A, because it is very similar to gene B.
+
+Gene           | sample_1
+---------------|---------
+gene_A         | $x$
+gene_B         | $y$
+gene_A--gene_B | $z$
+
+In the previous example, suppose that $x \ll z$.
+In this case, you can move all the reads from `gene_A` to `gene_A--gene_B`,
+using the `mergeThreshold=`$t$, a float in (0, 1). If $x < t \cdot y$,
+then the reads are transferred.
+
+
+## Using DESeq2
+
+You can use DESeq2 right after Rmmquant this way:
+```{r, deseq2, eval=FALSE}
+rmmquantOutput <- RmmquantRun(gtfFile,
+                              c("wt1.bam", "wt2.bam", "wt3.bam",
+                                "ko1.bam", "ko2.bam", "ko3.bam"))
+dds <- DESeqDataSetFromMatrix(countData = counts(rmmquantOutput),
+                              colData = coldata,
+                              design = ~ condition)
+```
+
+
+### Troubleshooting
+
+While installing the package, if the compiler complains and says
+
+    #error This file requires compiler and library support for the ISO C++ 2011 standard.
+    This support is currently experimental, and must be enabled with the -std=c++11 or -std=gnu++11 compiler options.
+
+Add this line
+
+    Sys.setenv("PKG_CXXFLAGS"="-std=c++11")
+
+before installing the package.
+
+
+## Session information
+
+```{r, session_info}
+devtools::session_info()
+```
+
+
+## References

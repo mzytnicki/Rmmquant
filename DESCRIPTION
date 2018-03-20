@@ -6,16 +6,24 @@ Date: 2017-12-08
 Authors@R: person("Zytnicki", "Matthias", email = "matthias.zytnicki@inra.fr",
   role = c("aut", "cre"))
 Maintainer: Matthias Zytnicki <matthias.zytnicki@inra.fr>
-Description: Counts the number of reads per gene.
+Description: Multi-mapping aware gene quantification tool for RNA-Seq data.
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
 SystemRequirements: C++11
 Depends:
-    Rcpp (>= 0.12.8)
+    R (>= 3.5)
 Imports:
-    Rcpp (>= 0.12.8)
+    Rcpp (>= 0.12.8),
+    methods,
+    GenomicRanges,
+    devtools,
+    BiocStyle
 LinkingTo: Rcpp
-RcppModules: RmmquantParameters_module
 RoxygenNote: 6.0.1
-Suggests: testthat
+biocViews:
+    GeneExpression
+Suggests: knitr,
+    rmarkdown,
+    testthat
+VignetteBuilder: knitr

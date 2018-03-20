@@ -15,10 +15,75 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+#include <iostream>
+#include <queue>
+#include <unordered_map>
+#include <thread>
+#include <atomic>
+#include <fstream>
+#include <sstream>
+#include <mutex>
+#include <algorithm>
+#include <iomanip>
+#include <cmath>
+#include <cassert>
+#include <zlib.h>
 
-#include "mmquantParameters.h"
+#ifdef MMSTANDALONE
+#   define MMOUT  std::cout
+#   define MMERR  std::cerr
+#   define MMEXIT exit(EXIT_FAILURE)
+#else
+#   define MMOUT  Rcpp::Rcout
+#   define MMERR  Rcpp::Rcerr
+#   define MMEXIT Rcpp::stop("Halting now.")
+#endif
 
+static const char VERSION[] = "1.3";
 static const char BAM_CIGAR_LOOKUP[] = "MIDNSHP=X";
+
+enum class Strandedness {U, F, R, FF, FR, RF};
+enum class ReadsFormat {unknown, sam, bam};
+
+class GeneStrand {
+    enum Type {plus, minus, both};
+    Type strand;
+    
+public:
+    GeneStrand &operator= (bool b) {
+        if (b) strand = Type::plus;
+        else   strand = Type::minus;
+        return *this;
+    }
+    GeneStrand &operator= (std::string &s) {
+        if      (s == "+") strand = Type::plus;
+        else if (s == "-") strand = Type::minus;
+        else               strand = Type::both;
+        return *this;
+    }
+    GeneStrand (): strand(Type::both) {}
+    GeneStrand (std::string& s) {
+        *this = s;
+    }
+    GeneStrand (bool b) {
+        *this = b;
+    }
+    std::string getString () {
+        switch (strand) {
+            case Type::plus:
+                return "+";
+            case Type::minus:
+                return "-";
+            default:
+                return "*";
+        }
+    }
+    bool operator== (bool b) {
+        if (strand == Type::both) return true;
+        return ((strand == Type::plus) == b);
+    }
+};
+
 
 namespace std {
 	template <>
@@ -33,8 +98,8 @@ namespace std {
 
 class comma_numpunct : public std::numpunct<char> {
 	protected:
-		virtual char   do_thousands_sep () const { return ','; }
-		virtual std::string do_grouping ()      const { return "\03"; }
+		virtual char        do_thousands_sep () const { return ','; }
+		virtual std::string do_grouping ()     const { return "\03"; }
 };
 
 
@@ -66,11 +131,28 @@ static inline void trim(std::string &s) {
 	ltrim(s); rtrim(s);
 }
 
-static inline void printStats(unsigned int n, const char *s, unsigned int nHits) {
-	unsigned int size = log10(static_cast<double>(nHits))+1;
-	size += static_cast<unsigned int>(size / 3.0);
-	MMERR << "\t" << s << std::setw(size) << n << " (" << std::setw(5) << std::fixed << std::setprecision(1) << (static_cast<float>(n)/nHits*100) << "%)\n";
+static inline void lower (std::string &s) {
+	transform(s.begin(), s.end(), s.begin(), ::tolower);
 }
+
+static inline void printStats(std::ostream &stream, unsigned int n, unsigned int nHits) {
+	if (nHits == 0) {
+		stream << "\t0" << std::endl;
+	}
+	unsigned int size = std::log10(static_cast<double>(nHits)) * (4 / 3) + 1;
+	stream << std::setw(size) << n << " (" << std::setw(5) << std::fixed << std::setprecision(1) << (static_cast<float>(n)/nHits*100) << "%) ";
+}
+
+
+struct HitsStats {
+    unsigned int nHits, nUnique, nAmbiguous, nMultiple, nUnassigned;
+    
+    HitsStats(): nHits(0), nUnique(0), nAmbiguous(0), nMultiple(0), nUnassigned(0) {}
+
+		void clear() {
+				nHits = nUnique = nAmbiguous = nMultiple = nUnassigned = 0;
+		}
+};
 
 
 /*
@@ -81,13 +163,503 @@ std::vector < std::string > allChromosomes {};
 */
 std::vector < std::string > allChromosomes {};
 std::vector < std::pair < std::string, std::vector < unsigned int > > > outputTable {};
+std::vector < HitsStats > outputStats {};
 std::mutex printMutex;
+
+inline bool strandF (bool strand, bool isFirst, bool isPaired) {
+	if (isPaired) {
+		MMERR << "Error! Strandedness 'F' should be used for single-end reads.\nExiting." << std::endl;
+		MMEXIT;
+	}
+	return strand;
+}
+inline bool strandR (bool strand, bool isFirst, bool isPaired) {
+	if (isPaired) {
+		MMERR << "Error! Strandedness 'R' should be used for single-end reads.\nExiting." << std::endl;
+		MMEXIT;
+	}
+	return ! strand;
+}
+inline bool strandFF (bool strand, bool isFirst, bool isPaired) {
+	if (! isPaired) {
+		MMERR << "Error! Strandedness 'FF' should be used for paired-end reads.\nExiting." << std::endl;
+	    MMEXIT;
+	}
+	return strand;
+}
+inline bool strandFR (bool strand, bool isFirst, bool isPaired) {
+	if (! isPaired) {
+		MMERR << "Error! Strandedness 'FR' should be used for paired-end reads.\nExiting." << std::endl;
+	    MMEXIT;
+	}
+	return (strand == isFirst);
+}
+inline bool strandRF (bool strand, bool isFirst, bool isPaired) {
+	if (! isPaired) {
+		MMERR << "Error! Strandedness 'RF' should be used for paired-end reads.\nExiting." << std::endl;
+	    MMEXIT;
+	}
+	return (strand != isFirst);
+}
+inline bool strandU (bool strand, bool isFirst, bool isPaired) {
+	return true;
+}
+
+
+class Gene;
+class Read;
+struct MmquantParameters;
+
+bool geneInclusion (MmquantParameters &parameters, Gene &g, Read &r);
+bool geneOverlapPc (MmquantParameters &parameters, Gene &g, Read &r);
+bool geneOverlap (MmquantParameters &parameters, Gene &g, Read &r);
+
+typedef unsigned long Position;
+typedef bool(*StrandednessFunction)(bool, bool, bool);
+typedef bool(*GeneOverlapFunction)(MmquantParameters &, Gene &, Read &);
+
+static const Position UNKNOWN = std::numeric_limits<Position>::max();
+
+static const unsigned int COUNT_THRESHOLD        =     0;
+static const float        OVERLAP                =    -1.0;
+static const float        MERGE_THRESHOLD        =     0.0;
+static const unsigned int N_THREADS              =     1;
+static const unsigned int N_OVERLAP_DIFFERENCES  =    30;
+static const float        PC_OVERLAP_DIFFERENCES =     2.0;
+static const unsigned int BIN_SIZE               = 16384;
+static const bool         FEATURE_COUNT_STYLE    = false;
+static const bool         PRINT_GENE_NAME        = false;
+static const bool         ALL_SORTED             = true;
+static const bool         PROGRESS               = false;
+static const bool         QUIET                  = false;
+static const bool         PRINT_STRUCTURE        = false;
+
+struct MmquantParameters {
+	std::vector <std::string> args;
+
+	std::vector <bool>                 sortednesses;
+	std::vector <Strandedness>         strandednesses;
+	std::vector <StrandednessFunction> strandednessFunctions;
+	std::vector <ReadsFormat>          formats;
+
+	GeneOverlapFunction       geneOverlapFunction;
+	std::string               gtfFileName;
+	std::string               outputFileName;
+	std::string               statsFileName;
+	std::vector <std::string> readsFileNames;
+	std::vector <std::string> names;
+	std::filebuf              outputBuffer;
+	std::filebuf              statsBuffer;
+	std::ostream             *outputFile;
+	std::ostream             *statsFile;
+	
+#ifndef MMSTANDALONE
+	Rcpp::S4 genomicRanges;
+	Rcpp::S4 genomicRangesList;
+#endif
+
+	unsigned int nInputs;
+	unsigned int countThreshold      { COUNT_THRESHOLD        };
+	float        overlap             { OVERLAP                };
+	float        mergeThreshold      { MERGE_THRESHOLD        };
+	unsigned int nThreads            { N_THREADS              };
+	unsigned int nOverlapDifference  { N_OVERLAP_DIFFERENCES  };
+	float        pcOverlapDifference { PC_OVERLAP_DIFFERENCES };
+	Position     binSize             { BIN_SIZE               };
+	bool         featureCountStyle   { FEATURE_COUNT_STYLE    };
+	bool         allSorted           { ALL_SORTED             };
+	bool         printGeneName       { PRINT_GENE_NAME        };
+	bool         progress            { PROGRESS               };
+	bool         quiet               { QUIET                  };
+	
+	inline void printUsage () {
+#ifdef MMSTANDALONE
+		MMERR << "Usage: mmquant [options]\n";
+		MMERR <<   "\tCompulsory options:\n";
+		MMERR <<     "\t\t-a file: annotation file in GTF format\n";
+		MMERR <<     "\t\t-r file1 [file2 ...]: reads in BAM/SAM format\n";
+		MMERR << "\tMain options:\n";
+		MMERR <<     "\t\t-o output: output file (default: stdout)\n";
+		MMERR <<     "\t\t-n name1 name2...: short name for each of the reads files\n";
+		MMERR <<     "\t\t-s strand: string (U, F, R, FR, RF, FF, defaut: U) (use several strand types if the library strategies differ)\n";
+		MMERR <<     "\t\t-e sorted: string (Y if reads are position-sorted, N otherwise, defaut: Y) (use several times if reads are not consistently (un)sorted)\n";
+		MMERR <<     "\t\t-f format (SAM or BAM): format of the read files (default: guess from file extension)\n";
+		MMERR <<     "\t\t-l integer: overlap type (<0: read is included, <1: % overlap, otherwise: # nt, default: " << OVERLAP << ")\n";
+		MMERR << "\tAmbiguous reads options:\n";
+		MMERR <<     "\t\t-c integer: count threshold (default: " << COUNT_THRESHOLD << ")\n";
+		MMERR <<     "\t\t-m float: merge threshold (default: " << MERGE_THRESHOLD << ")\n";
+		MMERR <<     "\t\t-d integer: number of overlapping bp between the best matches and the other matches (default: " << N_OVERLAP_DIFFERENCES << ")\n";
+		MMERR <<     "\t\t-D float: ratio of overlapping bp between the best matches and the other matches (default: " << PC_OVERLAP_DIFFERENCES << ")\n";
+		MMERR << "\tOutput options:\n";
+		MMERR <<     "\t\t-g: print gene name instead of gene ID in the output file\n";
+		MMERR <<     "\t\t-O file_name: print statistics to a file instead of stderr\n";
+		MMERR <<     "\t\t-F: use featureCounts output style\n";
+		MMERR <<     "\t\t-p: print progress\n";
+		MMERR <<     "\t\t-t integer: # threads (default: " << N_THREADS << ")\n";
+		MMERR <<     "\t\t-v: version" << "\n";
+		MMERR <<     "\t\t-h: this help" << std::endl;
+#endif
+	}
+	
+	void printState() {
+		MMERR << "Annotation file: " << gtfFileName << "\n";
+		MMERR << "Read(s) file:";
+		for (std::string &f: readsFileNames) {
+			MMERR << " " << f;
+		}
+		MMERR << "\n";
+		MMERR << "Sample names:";
+		for (std::string &f: names) {
+			MMERR << " " << f;
+		}
+		MMERR << "\n";
+		MMERR << "Output file: " << outputFileName << " (" << outputFile << ")\n";
+		MMERR << "Stats file: " << statsFileName << " (" << statsFile << ")\n";
+		MMERR << "Overlap: " << overlap << "\n";
+		MMERR << "Overlap function: " << geneOverlapFunction << "\n";
+	}
+
+	void setGtfFileName(std::string &s) {
+		gtfFileName = s;
+	}
+	
+#ifndef MMSTANDALONE
+	void setGenomicRanges(Rcpp::S4 &gr) {
+		genomicRanges = gr;
+	}
+	void setGenomicRangesList(Rcpp::S4 &grl) {
+		genomicRangesList = grl;
+	}
+#endif
+
+	void addReadsFileName(std::string &s) {
+		readsFileNames.push_back(s);
+	}
+
+	void addName(std::string &s) {
+		names.push_back(s);
+	}
+
+	void setOutputFileName(std::string &s) {
+		outputFileName = s;
+		outputBuffer.open(outputFileName.c_str(), std::ios::out);
+		outputFile = new std::ostream(&outputBuffer);
+	}
+
+	void setStatsFileName(std::string &s) {
+		statsFileName = s;
+		statsBuffer.open(statsFileName.c_str(), std::ios::out);
+		statsFile = new std::ostream(&statsBuffer);
+	}
+
+	void setOverlap(float f) {
+		overlap = f;
+		if      (overlap < 0.0) geneOverlapFunction = geneInclusion;
+		else if (overlap < 1.0) geneOverlapFunction = geneOverlapPc;
+		else                    geneOverlapFunction = geneOverlap;
+	}
+
+	int addStrand(std::string &s) {
+	    if      (s == "U")  { strandednesses.push_back(Strandedness::U);  strandednessFunctions.push_back(strandU); }
+	    else if (s == "F")  { strandednesses.push_back(Strandedness::F);  strandednessFunctions.push_back(strandF); }
+	    else if (s == "R")  { strandednesses.push_back(Strandedness::R);  strandednessFunctions.push_back(strandR); }
+	    else if (s == "FR") { strandednesses.push_back(Strandedness::FR); strandednessFunctions.push_back(strandFR); }
+	    else if (s == "FF") { strandednesses.push_back(Strandedness::FF); strandednessFunctions.push_back(strandFF); }
+	    else if (s == "RF") { strandednesses.push_back(Strandedness::RF); strandednessFunctions.push_back(strandRF); }
+	    else {
+	        MMERR << "Do not understand strandedness " << s << "\n" << "Exiting." << std::endl;
+	        printUsage();
+	        return EXIT_FAILURE;
+	    }
+	    return 0;
+	}
+
+	void addSort(bool b) {
+			sortednesses.push_back(b);
+	}
+
+	int addSort(const std::string &s) {
+			if      (s == "Y")  { addSort(true);  }
+			else if (s == "N")  { addSort(false); }
+			else {
+				MMERR << "Do not understand sortedness " << s << "\n" << "Exiting." << std::endl;
+				printUsage();
+				return EXIT_FAILURE;
+			}
+			return 0;
+	}
+
+	void setCountThreshold(unsigned int u) {
+		countThreshold = u;
+	}
+
+	void setMergeThreshold(float f) {
+		mergeThreshold = f;
+	}
+
+	void setPrintGeneName(bool b) {
+		printGeneName = b;
+	}
+
+	void setFeatureCountStyle(bool b) {
+		featureCountStyle = b;
+	}
+	
+	void setQuiet(bool b) {
+		quiet = b;
+	}
+
+	void setProgress(bool b) {
+		progress = b;
+	}
+
+	void setNThreads(int n) {
+		nThreads = n;
+	}
+
+	int addFormat(std::string &s) {
+			lower(s);
+			if      (s == "sam")  { formats.push_back(ReadsFormat::sam); }
+			else if (s == "bam")  { formats.push_back(ReadsFormat::bam); }
+			else {
+				MMERR << "Do not understand reads format " << s << "\n" << "Exiting." << std::endl;
+				printUsage();
+				return EXIT_FAILURE;
+			}
+			return 0;
+	}
+
+	void setNOverlapDifference(int n) {
+		nOverlapDifference = n;
+	}
+
+	void setPcOverlapDifference(float f) {
+		pcOverlapDifference = f;
+	}
+	
+	int parse(std::vector < std::string > &a) {
+		int code;
+		size_t nArgs = a.size();
+		args = a;
+		if (nArgs == 1) {
+			printUsage();
+			return EXIT_FAILURE;
+		}
+		for (size_t i = 1; i < nArgs; i++) {
+			std::string &s = args[i];
+			if (! s.empty()) {
+				if (s == "-a") {
+					setGtfFileName(args[++i]);
+				}
+				else if (s == "-r") {
+					for (++i; i < nArgs; ++i) {
+						s = args[i];
+						if (s[0] == '-') {--i; break;}
+						else addReadsFileName(s);
+					}
+				}
+				else if (s == "-n") {
+					for (++i; i < nArgs; ++i) {
+						s = args[i];
+						if (s[0] == '-') {--i; break;}
+						else addName(s);
+					}
+				}
+				else if (s == "-o") {
+					setOutputFileName(args[++i]);
+				}
+				else if (s == "-O") {
+					setStatsFileName(args[++i]);
+				}
+				else if (s == "-l") {
+					setOverlap(stof(args[++i]));
+				}
+				else if (s == "-s") {
+					for (++i; i < nArgs; ++i) {
+						s = args[i];
+						if (s.empty())        {--i; break;}
+						else if (s[0] == '-') {--i; break;}
+						else if ((code = addStrand(s)) != 0) {
+							return EXIT_FAILURE;
+						}
+					}
+				}
+				else if (s == "-e") {
+					for (++i; i < nArgs; ++i) {
+						s = args[i];
+						if (s.empty())        {--i; break;}
+						else if (s[0] == '-') {--i; break;}
+						else if ((code = addSort(s)) != 0) {
+							return EXIT_FAILURE;
+						}
+					}
+				}
+				else if (s == "-c") {
+					setCountThreshold(stoul(args[++i]));
+				}
+				else if (s == "-m") {
+					setMergeThreshold(stof(args[++i]));
+				}
+				else if (s == "-g") {
+					setPrintGeneName(true);
+				}
+				else if (s == "-F") {
+					setFeatureCountStyle(true);
+				}
+				else if (s == "-p") {
+					setProgress(true);
+				}
+				else if (s == "-t") {
+					setNThreads(stoi(args[++i]));
+				}
+				else if (s == "-f") {
+					for (++i; i < nArgs; ++i) {
+						s = args[i];
+						lower(s);
+						if (s.empty())        {--i; break;}
+						else if (s[0] == '-') {--i; break;}
+						else if ((code = addFormat(s)) != 0) {
+							return EXIT_FAILURE;
+						}
+					}
+				}
+				else if (s == "-d") {
+					setNOverlapDifference(stoi(args[++i]));
+				}
+				else if (s == "-D") {
+					setPcOverlapDifference(stof(args[++i]));
+				}
+				else if (s == "-v") {
+					MMERR << "mmquant version " << VERSION << std::endl;
+					return EXIT_FAILURE;
+				}
+				else if (s == "-h") {
+					printUsage();
+					return EXIT_FAILURE;
+				}
+				else {
+					MMERR << "Error: wrong parameter '" << s << "'.\nExiting." << std::endl;
+					printUsage();
+					return EXIT_FAILURE;
+				}
+			}
+		}
+		return 0;
+	}
+
+	int check () {
+#ifdef MMSTANDALONE
+		if (gtfFileName.empty()) {
+			MMERR << "Missing input GTF file.\nExiting." << std::endl;
+			printUsage();
+			return EXIT_FAILURE;
+		}
+#endif
+		if (readsFileNames.empty()) {
+			MMERR << "Missing input BAM file.\nExiting." << std::endl;
+			printUsage();
+			return EXIT_FAILURE;
+		}
+		nInputs = readsFileNames.size();
+		if (names.empty()) {
+			for (std::string &fileName: readsFileNames) {
+				std::string n = fileName;
+				size_t p = n.find_last_of("/");
+				if (p != std::string::npos) n = n.substr(p+1); 
+				p = n.find_last_of(".");
+				if (p != std::string::npos) n = n.substr(0, p); 
+				names.push_back(n);
+			}
+		}
+		else if (names.size() != nInputs) {
+			MMERR << "Number of names is not equal to number of file names.\nExiting." << std::endl;
+			printUsage();
+			return EXIT_FAILURE;
+		}
+		if (strandednesses.size() == 0) {
+			strandednesses        = std::vector <Strandedness>         (nInputs, Strandedness::U);
+			strandednessFunctions = std::vector <StrandednessFunction> (nInputs, strandU);
+		}
+		else if (strandednesses.size() == 1) {
+			if (nInputs != 1) {
+				strandednesses        = std::vector <Strandedness>         (nInputs, strandednesses.front());
+				strandednessFunctions = std::vector <StrandednessFunction> (nInputs, strandednessFunctions.front());
+			}
+		}
+		else if (strandednesses.size() != nInputs) {
+			MMERR << "Number of strandedness is not equal to number of file names.\nExiting." << std::endl;
+			printUsage();
+			return EXIT_FAILURE;
+		}
+		if (sortednesses.size() == 0) {
+			sortednesses = std::vector <bool> (nInputs, true);
+		}
+		else if (sortednesses.size() == 1) {
+			if (nInputs != 1) {
+				sortednesses = std::vector <bool> (nInputs, sortednesses.front());
+			}
+		}
+		else if (sortednesses.size() != nInputs) {
+			MMERR << "Number of sortedness is not equal to number of file names.\nExiting." << std::endl;
+			printUsage();
+			return EXIT_FAILURE;
+		}
+		allSorted = all_of(sortednesses.begin(), sortednesses.end(), [](bool v) {return v;});
+		if (formats.size() == 0) {
+			formats = std::vector <ReadsFormat> (nInputs, ReadsFormat::unknown);
+		}
+		else if (formats.size() == 1) {
+			if (nInputs != 1) {
+				formats = std::vector <ReadsFormat> (nInputs, formats.front());
+			}
+		}
+		else if (formats.size() != nInputs) {
+			MMERR << "Number of reads formats is not equal to number of file names.\nExiting." << std::endl;
+			printUsage();
+			return EXIT_FAILURE;
+		}
+    if (outputFileName.empty()) {
+        outputFile = new std::ostream(MMOUT.rdbuf());
+    }
+    if (statsFileName.empty()) {
+        statsFile = new std::ostream(MMERR.rdbuf());
+    }
+		if (std::isnan(overlap)) {
+		    overlap = OVERLAP;
+		}
+		if (countThreshold == 0) {
+		    countThreshold = COUNT_THRESHOLD;
+		}
+		if (std::isnan(mergeThreshold)) {
+		    mergeThreshold = MERGE_THRESHOLD;
+		}
+		if (nThreads == 0) {
+		    nThreads = N_THREADS;
+		}
+		if (nOverlapDifference > 10000) {
+		    nOverlapDifference = N_OVERLAP_DIFFERENCES;
+		}
+		if (std::isnan(pcOverlapDifference)) {
+		    pcOverlapDifference = PC_OVERLAP_DIFFERENCES;
+		}
+		return EXIT_SUCCESS;
+	}
+
+	std::ostream &getOutputStream () {
+		return *outputFile;
+	}
+
+	std::ostream &getStatsStream () {
+		return *statsFile;
+	}
+};
+
 
 class GtfLineParser {
 	protected:
 		std::string type, chromosome, geneId, transcriptId, geneName;
 		Position start, end;
-		bool strand;
+		GeneStrand strand;
 
 	public:
 		GtfLineParser (std::string line) {
@@ -96,7 +668,7 @@ class GtfLineParser {
 			assert(splittedLine.size() == 9);
 			type       = splittedLine[2];
 			chromosome = splittedLine[0];
-			strand     = (splittedLine[6] == "+");
+			strand     = splittedLine[6];
 			start      = stoul(splittedLine[3]);
 			end        = stoul(splittedLine[4]);
 			std::string remaining = splittedLine[8];
@@ -137,7 +709,7 @@ class GtfLineParser {
 		}
 		std::string &getType ()               { return type; }
 		std::string &getChromosome ()         { return chromosome; }
-		bool         getStrand ()       const { return strand; }
+		GeneStrand  &getStrand ()             { return strand; }
 		Position     getStart ()        const { return start; }
 		Position     getEnd ()          const { return end; }
 		std::string  getGeneId ()       const { return geneId; }
@@ -550,11 +1122,13 @@ class Read: public Transcript {
 class Gene: public Interval {
 	protected:
 		std::string id, name;
-		bool strand;
+		GeneStrand strand;
 		std::vector <Transcript> transcripts;
 		unsigned int chromosomeId;
 	public:
-		Gene (std::string i, std::string n, Position s, Position e, bool st, unsigned int c): Interval(s, e), id(i), name(n), strand(st), chromosomeId(c) {
+		Gene () {}
+		Gene (std::string i): id(i) {}
+		Gene (std::string i, std::string n, Position s, Position e, GeneStrand st, unsigned int c): Interval(s, e), id(i), name(n), strand(st), chromosomeId(c) {
 			if (id.empty()) id = name;
 			if (name.empty()) name = id;
 		}		
@@ -562,11 +1136,13 @@ class Gene: public Interval {
 			if (name.empty()) name = id;
 			if (id.empty()) id = name;
 		}
-		std::string      &getName ()               { return name; }
-		std::string      &getId ()                 { return id; }
-		bool         getStrand ()       const { return strand; }
+		std::string &getName ()               { return name; }
+		std::string &getId ()                 { return id; }
+		GeneStrand         getStrand () const { return strand; }
 		unsigned int getChromosomeId () const { return chromosomeId; }
-		void correctName () { name += " (" + id + ")"; }
+		void setId       (std::string &i) { id    = i; }
+		void setName     (std::string &n) { name  = n; }
+		void correctName ()               { name += " (" + id + ")"; }
 		void addTranscript (Transcript &t) {
 			transcripts.push_back(t);
 			start = std::min<Position>(start, t.getStart());
@@ -588,6 +1164,18 @@ class Gene: public Interval {
 			}
 			start = std::min<Position>(start, e.getStart());
 			end   = std::max<Position>(end,   e.getEnd());
+		}
+		void addExon (Position s, Position e, GeneStrand st, unsigned int c) {
+		    strand       = st;
+		    chromosomeId = c;
+		    if (transcripts.empty()) {
+		        transcripts.emplace_back();
+		        start = s;
+		        end   = e;
+		    }
+		    transcripts.front().addExon(s, e);
+			start = std::min<Position>(start, s);
+			end   = std::max<Position>(end,   e);
 		}
 		void checkStructure () {
 			if (transcripts.empty()) transcripts.push_back(Transcript(*this));
@@ -627,7 +1215,7 @@ class Gene: public Interval {
 				chrs.push_back(allChromosomes[chromosomeId]);
 				starts.push_back(std::to_string(exon.getStart()));
 				ends.push_back(std::to_string(exon.getEnd()));
-				strands.push_back((strand)? "+": "-");
+				strands.push_back(strand.getString());
 				size += exon.getSize();
 			}
 			join(chrs,    output, ";");
@@ -669,7 +1257,7 @@ class GeneList {
 		std::vector <Gene>                                     genes;
 		std::vector <unsigned int>                             chrStarts;
 		std::unordered_map <std::string, std::vector <size_t>> bins;
-		MmquantParameters                                            &parameters;
+		MmquantParameters                                     &parameters;
 
 		void reduceOverlappingGeneList(Read &read, std::vector < unsigned int > &geneIdsIn, std::vector < unsigned int > &geneIdsOut, bool isIntron) {
 			unsigned int maxOverlap = 0;
@@ -686,7 +1274,7 @@ class GeneList {
 			}
 		}
 		void evaluateScan(Read &read, std::vector < unsigned int > &geneIds) {
-			if (genes.size() <= 1) {
+			if (geneIds.size() <= 1) {
 				return;
 			}
 			std::vector < unsigned int > keptGenes1, keptGenes2;
@@ -700,13 +1288,14 @@ class GeneList {
 		}
 
 	public:
-		GeneList(MmquantParameters &p, std::string &fileName): parameters(p) {
+		GeneList(MmquantParameters &p): parameters(p) {}
+		void readFromFile(std::string &fileName) {
 			std::ifstream file (fileName.c_str());
 			std::vector <std::unordered_map<std::string, unsigned int>> geneHash;
 			std::vector <std::unordered_map<std::string, Gene>> unsortedGenes;
 			std::string line, chromosome;
-			unsigned long cpt;
 			unsigned int chromosomeId = std::numeric_limits<unsigned int>::max();
+			unsigned long cpt;
 			if (! parameters.quiet) MMERR << "Reading GTF file" << std::endl;
 			for (cpt = 0; getline(file, line); cpt++) {
 				if ((! line.empty()) && (line[0] != '#')) {
@@ -765,8 +1354,112 @@ class GeneList {
 			}
 			if (! parameters.quiet) MMERR << "\t" << cpt << " lines read, done.  " << genes.size() << " genes found." << std::endl;
 			sort(genes.begin(), genes.end());
+		}
+#ifndef MMSTANDALONE
+		void readFromGenomicRanges(Rcpp::S4 &genomicRanges) {
+            Rcpp::S4              seqnames             = genomicRanges.slot("seqnames");
+            Rcpp::IntegerVector   seqnamesValues       = seqnames.slot("values");
+            Rcpp::CharacterVector seqnamesValuesLevels = seqnamesValues.attr("levels");
+            Rcpp::IntegerVector   seqnamesLengths      = seqnames.slot("lengths");
+            Rcpp::S4              ranges               = genomicRanges.slot("ranges");
+            Rcpp::IntegerVector   rangesStart          = ranges.slot("start");
+            Rcpp::IntegerVector   rangesWidth          = ranges.slot("width");
+            Rcpp::CharacterVector rangesNames          = ranges.slot("NAMES");
+            Rcpp::S4              strand               = genomicRanges.slot("strand");
+            Rcpp::IntegerVector   strandValues         = strand.slot("values");
+            Rcpp::CharacterVector strandValuesLevels   = strandValues.attr("levels");
+            Rcpp::IntegerVector   strandLengths        = strand.slot("lengths");
+            unsigned int iSeqnames    = 0;
+            unsigned int iStrand      = 0;
+            unsigned int seqnamesStep = seqnamesLengths[0];
+            unsigned int strandStep   = strandLengths[0];
+            unsigned int thisSeqname  = seqnamesValues[0];
+            GeneStrand   thisStrand;
+            std::string  tmp;
+            tmp        = strandValuesLevels[strandValues[0]-1];
+            thisStrand = tmp;
+            for (auto &seqname: seqnamesValuesLevels) {
+                allChromosomes.push_back(Rcpp::as<std::string>(seqname));
+            }
+            for (unsigned int iRanges = 0; iRanges < rangesStart.size(); ++iRanges, --seqnamesStep, --strandStep) {
+                if (seqnamesStep == 0) {
+                    ++iSeqnames;
+                    thisSeqname  = seqnamesValues[iSeqnames];
+                    seqnamesStep = seqnamesLengths[iSeqnames];
+                }
+                if (strandStep == 0) {
+                    ++iStrand;
+                    tmp        = strandValuesLevels[strandValues[iStrand]-1];
+                    thisStrand = tmp;
+                    strandStep = strandLengths[iStrand];
+                }
+                Position    start = rangesStart[iRanges];
+                Position    end   = start + rangesWidth[iRanges] - 1;
+                std::string name  = Rcpp::as<std::string>(rangesNames[iRanges]);
+        		genes.emplace_back(name, "", start, end, thisStrand, thisSeqname - 1);
+            }
+		}
+		void readFromGenomicRangesList(Rcpp::S4 &genomicRangesList) {
+            Rcpp::S4              genomicRanges        = genomicRangesList.slot("unlistData");
+            Rcpp::S4              seqnames             = genomicRanges.slot("seqnames");
+            Rcpp::IntegerVector   seqnamesValues       = seqnames.slot("values");
+            Rcpp::CharacterVector seqnamesValuesLevels = seqnamesValues.attr("levels");
+            Rcpp::IntegerVector   seqnamesLengths      = seqnames.slot("lengths");
+            Rcpp::S4              ranges               = genomicRanges.slot("ranges");
+            Rcpp::IntegerVector   rangesStart          = ranges.slot("start");
+            Rcpp::IntegerVector   rangesWidth          = ranges.slot("width");
+            Rcpp::S4              strand               = genomicRanges.slot("strand");
+            Rcpp::IntegerVector   strandValues         = strand.slot("values");
+            Rcpp::CharacterVector strandValuesLevels   = strandValues.attr("levels");
+            Rcpp::IntegerVector   strandLengths        = strand.slot("lengths");
+            Rcpp::S4              partitioning         = genomicRangesList.slot("partitioning");
+            Rcpp::IntegerVector   ends                 = partitioning.slot("end");
+            Rcpp::CharacterVector names                = partitioning.slot("NAMES");
+            unsigned int iPartition   = 0;
+            unsigned int iSeqnames    = 0;
+            unsigned int iStrand      = 0;
+            unsigned int seqnamesStep = seqnamesLengths[0];
+            unsigned int strandStep   = strandLengths[0];
+            unsigned int thisSeqname  = seqnamesValues[0];
+            GeneStrand   thisStrand;
+            Gene         gene;
+            std::string  tmp;
+            tmp = names[0];
+            gene.setId(tmp);
+            tmp        = strandValuesLevels[strandValues[0]-1];
+            thisStrand = tmp;
+            for (auto &seqname: seqnamesValuesLevels) {
+                allChromosomes.push_back(Rcpp::as<std::string>(seqname));
+            }
+            for (unsigned int iRanges = 0; iRanges < rangesStart.size(); ++iRanges, --seqnamesStep, --strandStep) {
+                if (seqnamesStep == 0) {
+                    ++iSeqnames;
+                    thisSeqname  = seqnamesValues[iSeqnames];
+                    seqnamesStep = seqnamesLengths[iSeqnames];
+                }
+                if (strandStep == 0) {
+                    ++iStrand;
+                    tmp        = strandValuesLevels[strandValues[iStrand]-1];
+                    thisStrand = tmp;
+                    strandStep = strandLengths[iStrand];
+                }
+                Position start = rangesStart[iRanges];
+                Position end   = start + rangesWidth[iRanges] - 1;
+        		gene.addExon(start, end, thisStrand, thisSeqname - 1);
+        		if (iRanges + 1 == ends[iPartition]) {
+        		    genes.push_back(gene);
+            		++iPartition;
+            		if (iPartition < names.size()) {
+            		    tmp = names[iPartition];
+                        gene = Gene(tmp);
+            		}
+        		}
+            }
+		}
+#endif
+		void buildStructure () {
+			unsigned int chromosomeId = std::numeric_limits<unsigned int>::max();
 			chrStarts = std::vector<unsigned int>(allChromosomes.size());
-			chromosomeId = std::numeric_limits<unsigned int>::max();
 			for (unsigned int i = 0; i < genes.size(); i++) {
 				genes[i].checkStructure();
 				if (genes[i].getChromosomeId() != chromosomeId) {
@@ -777,7 +1470,7 @@ class GeneList {
 			std::vector <std::string> names, duplicates;
 			std::string previousName;
 			for (Gene &gene: genes) {
-				names.push_back(gene.getName());
+				names.push_back(gene.getId());
 			}
 			sort(names.begin(), names.end());
 			for (std::string &name: names) {
@@ -791,7 +1484,7 @@ class GeneList {
 				}
 			}
 			for (Gene &gene: genes) {
-				if (binary_search(duplicates.begin(), duplicates.end(), gene.getName())) gene.correctName();
+				if (binary_search(duplicates.begin(), duplicates.end(), gene.getId())) gene.correctName();
 			}
 			if (! parameters.allSorted) {
 				for (unsigned int i = 0; i < genes.size(); i++) {
@@ -802,12 +1495,14 @@ class GeneList {
 					}
 				}
 			}
+		    
 		}
 		void scan(Read &read, std::vector <unsigned int> &matchingGenes, GeneListPosition &position, Strandedness strandedness, bool sorted) {
 			if (sorted) {
 				if (allChromosomes[position.chromosomeId] != read.getChromosome()) {
 					if (find(unknownChromosomes.begin(), unknownChromosomes.end(), read.getChromosome()) != unknownChromosomes.end()) return;
-					for (position.chromosomeId = 0; (position.chromosomeId < allChromosomes.size()) && (allChromosomes[position.chromosomeId] != read.getChromosome()); position.chromosomeId++) ;
+					for (position.chromosomeId = 0; (position.chromosomeId < allChromosomes.size()) && (allChromosomes[position.chromosomeId] != read.getChromosome()); position.chromosomeId++)
+					    ;
 					if (position.chromosomeId == allChromosomes.size()) {
 						unknownChromosomes.push_back(read.getChromosome());
 						position.reset();
@@ -830,7 +1525,7 @@ class GeneList {
 			size_t id = position.geneId;
 			while ((id < genes.size()) && (genes[id].getChromosomeId() == position.chromosomeId) && (! genes[id].isAfter(read))) {
 				Gene &gene = genes[id];
-				if ((strandedness == Strandedness::U) || (read.getStrand() == gene.getStrand())) {
+				if ((strandedness == Strandedness::U) || (gene.getStrand() == read.getStrand())) {
 					bool m = parameters.geneOverlapFunction(parameters, gene, read);
 					if (m) matchingGenes.push_back(id);
 				}	
@@ -847,11 +1542,11 @@ class GeneList {
 
 class Counter {
 	protected:
-		GeneList &geneList;
+		GeneList  &geneList;
+		HitsStats stats;
 		std::unordered_map<std::string, std::pair <unsigned int, std::vector <unsigned int>>> readCounts;
 		std::unordered_map<std::vector<unsigned int>, unsigned int> geneCounts;
 		std::vector<std::vector<unsigned int>> genes;
-		unsigned int nHits, nUnique, nAmbiguous, nMultiple, nUnassigned;
 		std::string fileName;
 		MmquantParameters &parameters;
 		void addGeneCount (const std::vector <unsigned int> &g) {
@@ -863,13 +1558,13 @@ class Counter {
 		}
 		void addCount(std::string &read, std::vector <unsigned int> &matchingGenes, unsigned int nHits) {
 			if (matchingGenes.empty()) {
-				nUnassigned++;
+				stats.nUnassigned++;
 				return;
 			}
-			if      (matchingGenes.size() > 1) nAmbiguous++;
-			else if (nHits == 1) nUnique++;
+			if      (matchingGenes.size() > 1) stats.nAmbiguous++;
+			else if (nHits == 1) stats.nUnique++;
 			if (nHits > 1) {
-				nMultiple++;
+				stats.nMultiple++;
 				auto pos = readCounts.find(read);
 				if (pos == readCounts.end()) {
 					readCounts[read] = std::make_pair(nHits-1, matchingGenes);
@@ -893,7 +1588,7 @@ class Counter {
 			readCounts.clear();
 			geneCounts.clear();
 			genes.clear();
-			nHits = nUnique = nAmbiguous = nMultiple = nUnassigned = 0;
+			stats.clear();
 		}
 		void read (std::string &f, Strandedness strandedness, StrandednessFunction strandednessFunction, bool sorted, ReadsFormat format) {
 			Reader *reader;
@@ -948,7 +1643,7 @@ class Counter {
 						read = Read(record, strandednessFunction);
 					}
 					if (! pending) {
-						nHits++;
+						stats.nHits++;
 						std::vector <unsigned int> matchingGenes;
 						geneList.scan(read, matchingGenes, position, strandedness, sorted);
 						addCount(read.getName(), matchingGenes, read.getNHits());
@@ -968,21 +1663,9 @@ class Counter {
 		std::unordered_map<std::vector<unsigned int>, unsigned int> &getCounts () {
 			return geneCounts;
 		}
-		void dump () {
-		    if (! parameters.quiet) {
-    			MMERR << "Results for " << fileName << ":" << std::endl;
-    			if (nHits == 0) {
-    				MMERR << "\tNo hit." << std::endl;
-    			}
-    			else {
-    				MMERR << "\t# hits:                     " << nHits << "\n";
-    				printStats(nUnique,     "# uniquely mapped reads:    ", nHits);
-    				printStats(nAmbiguous,  "# ambiguous hits:           ", nHits);
-    				printStats(nMultiple,   "# non-uniquely mapped hits: ", nHits);
-    				printStats(nUnassigned, "# unassigned hits:          ", nHits);
-    			}
-		    }
-		}
+	    HitsStats &getStats () {
+	        return stats;
+	    }
 };
 class TableCount {
 	protected:
@@ -1114,44 +1797,73 @@ class TableCount {
 			}
 			sort(selectedTable.begin(), selectedTable.end());
 		}
-	    void dump() {
+		void dump() {
 			if (parameters.featureCountStyle) {
-				parameters.getOS() << "# Program:mmquant v" << VERSION << "; Command:";
+				parameters.getOutputStream() << "# Program:mmquant v" << VERSION << "; Command:";
 				for (std::string &arg: parameters.args) {
-					parameters.getOS() << " \"" << arg << "\"";
+					parameters.getOutputStream() << " \"" << arg << "\"";
 				}
-				parameters.getOS() << "\nGeneid\tChr\tStart\tEnd\tStrand\tLength";
+				parameters.getOutputStream() << "\nGeneid\tChr\tStart\tEnd\tStrand\tLength";
 			}
 			else {
-				parameters.getOS() << "Gene";
+				parameters.getOutputStream() << "Gene";
 			}
 			for (std::string &sample: parameters.names) {
-				parameters.getOS() << "\t" << sample;
+				parameters.getOutputStream() << "\t" << sample;
 			}
-			parameters.getOS() << "\n";
+			parameters.getOutputStream() << "\n";
 			for (auto &line: selectedTable) {
-    			parameters.getOS() << line.first;
+    			parameters.getOutputStream() << line.first;
 			    for (unsigned int i: line.second) {
-			        parameters.getOS() << "\t" << i;
+			        parameters.getOutputStream() << "\t" << i;
 			    }
-			    parameters.getOS() << "\n";
+			    parameters.getOutputStream() << "\n";
 			}
 		}
 };
 
-static void doWork (MmquantParameters &parameters, GeneList &geneList, TableCount &table, std::atomic < unsigned int > &i, std::mutex &m1, std::mutex &m2) {
+#ifdef MMSTANDALONE
+static void dumpStats (std::ostream &stream, std::vector < std::string > &names, std::vector < HitsStats > &stats) {
+    stream << "Stats                       ";
+    for (size_t i = 0; i < names.size(); ++i) {
+				unsigned int size = std::log10(static_cast<double>(stats[i].nHits)) * 4 / 3 + 1;
+        stream << std::setw(size) << names[i] << "          ";
+    }
+    stream << "\n# hits:                     ";
+    for (HitsStats &stat: stats) {
+        stream << stat.nHits << "          " ;
+    }
+    stream << "\n# uniquely mapped reads:    ";
+    for (HitsStats &stat: stats) {
+        printStats(stream, stat.nUnique, stat.nHits);
+    }
+    stream << "\n# ambiguous hits:           ";
+    for (HitsStats &stat: stats) {
+        printStats(stream, stat.nAmbiguous, stat.nHits);
+    }
+    stream << "\n# non-uniquely mapped hits: ";
+    for (HitsStats &stat: stats) {
+        printStats(stream, stat.nMultiple, stat.nHits);
+    }
+    stream << "\n# unassigned hits:          ";
+    for (HitsStats &stat: stats) {
+        printStats(stream, stat.nUnassigned, stat.nHits);
+    }
+    stream << std::endl;
+}
+#endif
+
+static void doWork (MmquantParameters &parameters, GeneList &geneList, TableCount &table, std::vector < HitsStats > &stats, std::atomic < unsigned int > &i, std::mutex &m) {
 	Counter counter (parameters, geneList);
 	while (i < parameters.nInputs) {
 		unsigned int thisI;
-		m1.lock();
+		m.lock();
 		thisI = i;
 		++i;
-		m1.unlock();
+		m.unlock();
 		counter.clear();
 		counter.read(parameters.readsFileNames[thisI], parameters.strandednesses[thisI], parameters.strandednessFunctions[thisI], parameters.sortednesses[thisI], parameters.formats[thisI]);
-		m2.lock();
-		counter.dump();
-		m2.unlock();
+		stats[thisI] = counter.getStats();
 		table.addCounter(counter);
 	}
 }
@@ -1162,53 +1874,157 @@ static int start (MmquantParameters &parameters) {
     if (! parameters.quiet) parameters.printState();
     std::locale comma_locale(std::locale(), new comma_numpunct());
     MMERR.imbue(comma_locale);
-    GeneList geneList (parameters, parameters.gtfFileName);
+    GeneList geneList (parameters);
+    std::vector < HitsStats > stats (parameters.nInputs);
+#ifdef MMSTANDALONE
+    geneList.readFromFile(parameters.gtfFileName);
+#else
+    bool isGr = ((static_cast<Rcpp::IntegerVector>(static_cast<Rcpp::S4>(parameters.genomicRanges.slot("ranges")).slot("start"))).size() != 0);
+    if (! parameters.gtfFileName.empty()) {
+        geneList.readFromFile(parameters.gtfFileName);
+    }
+    else if (isGr) {
+        geneList.readFromGenomicRanges(parameters.genomicRanges);
+    }
+    else {
+        geneList.readFromGenomicRangesList(parameters.genomicRangesList);
+    }
+#endif
+    geneList.buildStructure();
     TableCount table (parameters, geneList);
     std::atomic < unsigned int > i(0);
-    std::mutex m1, m2;
+    std::mutex m;
     std::vector < std::thread > threads;
     for (unsigned int it = 0; it < parameters.nThreads - 1; ++it) {
-        threads.emplace_back(std::thread(doWork, std::ref(parameters), std::ref(geneList), std::ref(table), std::ref(i), std::ref(m1), std::ref(m2)));
+        threads.emplace_back(std::thread(doWork, std::ref(parameters), std::ref(geneList), std::ref(table), std::ref(stats), std::ref(i), std::ref(m)));
     }
-    doWork(parameters, geneList, table, i, m1, m2);
+    doWork(parameters, geneList, table, stats, i, m);
     for (std::thread &t: threads) {
         t.join();
     }
     table.selectGenes();
     table.prepareOutput();
-    if (parameters.printStructure) {
-        table.dump();
-    }
-    else {
-        outputTable = table.getTable();
-    }
+#ifdef MMSTANDALONE
+    table.dump();
+    dumpStats(parameters.getStatsStream(), parameters.names, stats);
+#else
+    outputTable = table.getTable();
+    outputStats = stats;
+#endif
     if (! parameters.quiet) MMERR << "Successfully done." << std::endl;
     return EXIT_SUCCESS;
 }
 
-static std::pair < std::vector< std::string >, std::vector < std::pair < std::string, std::vector < unsigned int > > > > getTable (MmquantParameters &parameters) {
-    return std::make_pair(parameters.names, outputTable);
+#ifndef MMSTANDALONE
+#include <Rcpp.h>
+// [[Rcpp::export]]
+void rcpp_parseGenomicRanges (Rcpp::S4 &genomicRanges) {
+    Rcpp::S4              seqnames             = genomicRanges.slot("seqnames");
+    Rcpp::IntegerVector   seqnamesValues       = seqnames.slot("values");
+    Rcpp::CharacterVector seqnamesValuesLevels = seqnamesValues.attr("levels");
+    Rcpp::IntegerVector   seqnamesLengths      = seqnames.slot("lengths");
+    Rcpp::S4              ranges               = genomicRanges.slot("ranges");
+    Rcpp::IntegerVector   rangesStart          = ranges.slot("start");
+    Rcpp::IntegerVector   rangesWidth          = ranges.slot("width");
+    Rcpp::CharacterVector rangesNames          = ranges.slot("NAMES");
+    Rcpp::S4              strand               = genomicRanges.slot("strand");
+    Rcpp::IntegerVector   strandValues         = strand.slot("values");
+    Rcpp::CharacterVector strandValuesLevels   = strandValues.attr("levels");
+    Rcpp::IntegerVector   strandLengths        = strand.slot("lengths");
 }
 
-#ifndef MMSTANDALONE
-Rcpp::NumericMatrix rStart (MmquantParameters &parameters) {
-	start(parameters);
-    auto table        = getTable(parameters);
-    auto &sampleNames = table.first;
-    auto &rest        = table.second;
-    Rcpp::NumericMatrix matrix(rest.size(), sampleNames.size());
-    Rcpp::CharacterVector genes(rest.size()), samples(sampleNames.size());
-    for (size_t i = 0; i < sampleNames.size(); ++i) {
-        samples[i] = sampleNames[i];
+// [[Rcpp::export]]
+Rcpp::List rcpp_Rmmquant (
+        Rcpp::String        &annotationFile,
+        Rcpp::StringVector  &readsFiles,
+        Rcpp::S4            &genomicRanges,
+        Rcpp::S4            &genomicRangesList,
+        Rcpp::StringVector  &sampleNames,
+        float                overlap,
+        Rcpp::StringVector  &strands,
+        Rcpp::LogicalVector &sorts,
+        unsigned int         countThreshold,
+        float                mergeThreshold,
+        bool                 printGeneName,
+        bool                 quiet,
+        bool                 progress,
+        unsigned int         nThreads,
+        Rcpp::StringVector  &formats,
+        int                  nOverlapDiff,
+        float                pcOverlapDiff) {
+    MmquantParameters parameters;
+    std::string tmp = annotationFile;
+    parameters.setGtfFileName(tmp);
+    parameters.setGenomicRanges(genomicRanges);
+    parameters.setGenomicRangesList(genomicRangesList);
+    for (auto &readsFile: readsFiles) {
+        tmp = readsFile;
+        parameters.addReadsFileName(tmp);
     }
-    for (size_t i = 0; i < rest.size(); ++i) {
-        auto               &line = rest[i];
-        Rcpp::NumericVector l    = wrap(line.second);
-        genes[i]                 = line.first;
+    for (auto &sampleName: sampleNames) {
+        tmp = sampleName;
+        parameters.addName(tmp);
+    }
+    for (auto &strand: strands) {
+        tmp = strand;
+        parameters.addStrand(tmp);
+    }
+    for (bool sort: sorts) {
+        parameters.addSort(sort);
+    }
+    for (auto &format: formats) {
+        tmp = format;
+        parameters.addFormat(tmp);
+    }
+    if (overlap        != NA_REAL)    parameters.setOverlap(overlap);
+    if (countThreshold != NA_INTEGER) parameters.setCountThreshold(countThreshold);
+    if (mergeThreshold != NA_REAL)    parameters.setMergeThreshold(mergeThreshold);
+    if (printGeneName  != NA_LOGICAL) parameters.setPrintGeneName(printGeneName);
+    if (quiet          != NA_LOGICAL) parameters.setQuiet(quiet);
+    if (progress       != NA_LOGICAL) parameters.setProgress(progress);
+    if (nThreads       != NA_INTEGER) parameters.setNThreads(nThreads);
+    if (nOverlapDiff   != NA_INTEGER) parameters.setNOverlapDifference(nOverlapDiff);
+    if (pcOverlapDiff  != NA_REAL)    parameters.setPcOverlapDifference(pcOverlapDiff);
+    start(parameters);
+    Rcpp::NumericMatrix matrix(outputTable.size(), parameters.names.size());
+    Rcpp::CharacterVector rowNames(outputTable.size()), colNames(parameters.names.size());
+    for (size_t i = 0; i < parameters.names.size(); ++i) {
+        colNames[i] = parameters.names[i];
+    }
+    for (size_t i = 0; i < outputTable.size(); ++i) {
+        auto               &line = outputTable[i];
+        Rcpp::NumericVector l    = Rcpp::wrap(line.second);
+        rowNames[i]              = line.first;
         matrix.row(i)            = l;
     }
-    colnames(matrix) = samples;
-    rownames(matrix) = genes;
-    return matrix;
+    colnames(matrix) = colNames;
+    rownames(matrix) = rowNames;
+    Rcpp::NumericVector stat = Rcpp::NumericVector (parameters.names.size());
+    Rcpp::DataFrame stats;
+    for (size_t i = 0; i < outputStats.size(); ++i) {
+         stat[i] = outputStats[i].nHits;
+    }
+    stats.push_back(stat, "n.hits");
+    stat = Rcpp::NumericVector (parameters.names.size());
+    for (size_t i = 0; i < outputStats.size(); ++i) {
+         stat[i] = outputStats[i].nUnique;
+    }
+    stats.push_back(stat, "n.uniquely.mapped.reads");
+    stat = Rcpp::NumericVector (parameters.names.size());
+    for (size_t i = 0; i < outputStats.size(); ++i) {
+         stat[i] = outputStats[i].nAmbiguous;
+    }
+    stats.push_back(stat, "n.ambiguously.mapped.hits");
+    stat = Rcpp::NumericVector (parameters.names.size());
+    for (size_t i = 0; i < outputStats.size(); ++i) {
+         stat[i] = outputStats[i].nMultiple;
+    }
+    stats.push_back(stat, "n.non.uniquely.mapped.hits");
+    stat = Rcpp::NumericVector (parameters.names.size());
+    for (size_t i = 0; i < outputStats.size(); ++i) {
+         stat[i] = outputStats[i].nUnassigned;
+    }
+    stats.push_back(stat, "n.unassigned.hits");
+    return Rcpp::List::create(Rcpp::_["counts"] = matrix, Rcpp::_["stats"] = stats);
 }
 #endif

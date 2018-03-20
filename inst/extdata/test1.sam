@@ -1,0 +1,5 @@
+@HD	VN:1.4	GO:none	SO:coordinate
+@SQ	SN:chr1	LN:10000
+@SQ	SN:chr2	LN:10000
+read1	0	chr1	1100	40	100M	*	0	0	*	*	NH:i:1
+read2	0	chr2	5100	40	100M	*	0	0	*	*	NH:i:1
