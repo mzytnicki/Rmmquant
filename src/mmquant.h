@@ -1015,7 +1015,7 @@ class Interval {
 				start = std::min<Position>(start, i.start);
 				end   = std::max<Position>(end, i.end);
 			}
-			bool operator< (const Interval &i) { return (this->isBefore(i)); }
+			bool operator< (const Interval &i) const { return (this->isBefore(i)); }
 };
 
 class Transcript: public Interval {
