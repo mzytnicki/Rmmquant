@@ -1382,7 +1382,7 @@ class GeneList {
             for (auto &seqname: seqnamesValuesLevels) {
                 allChromosomes.push_back(Rcpp::as<std::string>(seqname));
             }
-            for (unsigned int iRanges = 0; iRanges < rangesStart.size(); ++iRanges, --seqnamesStep, --strandStep) {
+            for (unsigned int iRanges = 0; iRanges < static_cast<unsigned int>(rangesStart.size()); ++iRanges, --seqnamesStep, --strandStep) {
                 if (seqnamesStep == 0) {
                     ++iSeqnames;
                     thisSeqname  = seqnamesValues[iSeqnames];
@@ -1432,7 +1432,7 @@ class GeneList {
             for (auto &seqname: seqnamesValuesLevels) {
                 allChromosomes.push_back(Rcpp::as<std::string>(seqname));
             }
-            for (unsigned int iRanges = 0; iRanges < rangesStart.size(); ++iRanges, --seqnamesStep, --strandStep) {
+            for (unsigned int iRanges = 0; iRanges < static_cast<unsigned int>(rangesStart.size()); ++iRanges, --seqnamesStep, --strandStep) {
                 if (seqnamesStep == 0) {
                     ++iSeqnames;
                     thisSeqname  = seqnamesValues[iSeqnames];
@@ -1450,7 +1450,7 @@ class GeneList {
         		if (iRanges + 1 == static_cast<unsigned int>(ends[iPartition])) {
         		    genes.push_back(gene);
             		++iPartition;
-            		if (iPartition < names.size()) {
+            		if (iPartition < static_cast<unsigned int>(names.size())) {
             		    tmp = names[iPartition];
                         gene = Gene(tmp);
             		}

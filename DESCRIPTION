@@ -12,7 +12,7 @@ Encoding: UTF-8
 LazyData: true
 SystemRequirements: C++11
 Depends:
-    R (>= 3.4)
+    R (>= 3.5)
 Imports:
     Rcpp (>= 0.12.8),
     methods,
