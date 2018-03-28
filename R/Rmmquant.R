@@ -7,7 +7,9 @@
 #'
 #' @author Matthias Zytnicki, \email{matthias.zytnicki@@inra.fr}
 #'
+#' @import S4Vectors
 #' @import GenomicRanges
+#' @import SummarizedExperiment
 #' @import devtools
 #' @import BiocStyle
 #' @importFrom methods is

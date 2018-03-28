@@ -2,15 +2,15 @@
 % Please edit documentation in R/AllClass.R
 \name{RmmquantExample}
 \alias{RmmquantExample}
-\title{Example constructor}
+\title{Example of Rmmquant use}
 \usage{
 RmmquantExample()
 }
 \value{
-An \code{RmmquantClass} object
+An \code{SummarizedExperiement}.
 }
 \description{
-Example constructor
+Example of Rmmquant use
 }
 \examples{
 example <- RmmquantExample()

@@ -14,6 +14,8 @@ vignette: >
 ```{r setup_knitr, include = FALSE, cache = FALSE}
 library("Rmmquant")
 library("BiocStyle")
+library("S4Vectors")
+library("SummarizedExperiment")
 library("knitr")
 library("rmarkdown")
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
@@ -30,6 +32,10 @@ and the `countOverlaps` of `r Biocpkg("GenomicRanges")`.
 The main difference with other approaches is that Rmmquant explicitely handles
 multi-mapping reads, in a way described by [@watson].
 
+Rmmquant is the R port of the C++
+[mmquant](https://bitbucket.org/mzytnicki/multi-mapping-counter),
+which has been published previously [@mmquant].
+
 
 ## Rmmquant in a nutshell
 
@@ -40,22 +46,17 @@ dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
 gtfFile <- file.path(dir, "test.gtf")
 bamFile <- file.path(dir, "test.bam")
 output <- RmmquantRun(gtfFile, bamFile)
-counts(output)
 ```
-In this example, the output is a matrix, where the columns are the samples
-(here, only `test.bam`), and the rows the gene counts (here, only `gene_A`).
+In this example, the output is a `r Biocpkg("SummarizedExperiment")`.
 
 Rmmquant expects at least two kinds of data:
 
 * annotation
 * reads
 
-Rmmquant provides a count table, as well as some basic statistics on the read
-assignment.
-
 Many aspects of Rmmquant can be controlled with parameters.
 
-All these notions are detailed here.
+All these notions are detailed hereafter.
 
 
 ## Package
@@ -118,12 +119,18 @@ You should also check how your mapping tool handles multi-mapping reads
 
 ### Counts
 
-The count table can be accessed using the `counts` method:
-```{r, counts}
-counts(output)
-```
+The output `r Biocpkg("SummarizedExperiment")` contains:
 
-The count table is a numeric matrix output is a tab-separated file, to be use in
+The count table can be accessed through the `assays` method of
+`r Biocpkg("SummarizedExperiment")`.
+This methods returns a list, with only one element: `counts`.
+```{r, counts}
+assays(output)$counts
+```
+The columns are the samples (here, only `test.bam`),
+and the rows the gene counts (here, only `gene_A`).
+
+The count table can be used by
 `r Biocpkg("DESeq2")` [@deseq2], for instance, using the
 `DESeqDataSetFromMatrix` function.
 
@@ -145,12 +152,14 @@ The reads that can be mapped to these genes will be counted there
 
 ### Statistics
 
-The statistics can be accessed using the `stats` method:
+The statistics can be accessed using the `colData` method of
+`r Biocpkg("SummarizedExperiment")`:
 ```{r, stats}
-stats(output)
+colData(output)
 ```
 
-This is a `data.frame`, with one column per sample.
+This is a `DataFrame` (defined in `r Biocpkg("S4Vectors")`),
+with one column per sample.
 The content of each column is:
 
 * `n.hits`:                     the number of hits
@@ -292,7 +301,7 @@ You can use DESeq2 right after Rmmquant this way:
 rmmquantOutput <- RmmquantRun(gtfFile,
                               c("wt1.bam", "wt2.bam", "wt3.bam",
                                 "ko1.bam", "ko2.bam", "ko3.bam"))
-dds <- DESeqDataSetFromMatrix(countData = counts(rmmquantOutput),
+dds <- DESeqDataSetFromMatrix(countData = assays(rmmquantOutput)$counts,
                               colData = coldata,
                               design = ~ condition)
 ```

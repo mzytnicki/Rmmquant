@@ -1998,8 +1998,8 @@ Rcpp::List rcpp_Rmmquant (
         rowNames[i]              = line.first;
         matrix.row(i)            = l;
     }
-    colnames(matrix) = colNames;
     rownames(matrix) = rowNames;
+    colnames(matrix) = colNames;
     Rcpp::NumericVector stat = Rcpp::NumericVector (parameters.names.size());
     Rcpp::DataFrame stats;
     for (size_t i = 0; i < outputStats.size(); ++i) {

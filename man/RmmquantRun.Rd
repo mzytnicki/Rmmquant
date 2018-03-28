@@ -2,11 +2,12 @@
 % Please edit documentation in R/AllClass.R
 \name{RmmquantRun}
 \alias{RmmquantRun}
-\title{Main Rmmquant function, and constructor of the class.}
+\title{Main Rmmquant function.}
 \usage{
-RmmquantRun(annotationFile = "", readsFiles, genomicRanges = GRanges(),
-  genomicRangesList = GRangesList(), sampleNames = character(0),
-  overlap = NA_integer_, strands = character(0), sorts = logical(0),
+RmmquantRun(annotationFile = "", readsFiles = character(0),
+  genomicRanges = GRanges(), genomicRangesList = GRangesList(),
+  sampleNames = character(0), overlap = NA_integer_,
+  strands = character(0), sorts = logical(0),
   countThreshold = NA_integer_, mergeThreshold = NA_real_,
   printGeneName = FALSE, quiet = TRUE, progress = FALSE, nThreads = 1,
   formats = character(0), nOverlapDiff = NA_integer_,
@@ -56,10 +57,10 @@ secondary map.}
 \item{lazyload}{Usual for S4 functions.}
 }
 \value{
-A numeric matrix.
+A \code{SummerizedExperiment}.
 }
 \description{
-Main Rmmquant function, and constructor of the class.
+Main Rmmquant function.
 }
 \examples{
 dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)

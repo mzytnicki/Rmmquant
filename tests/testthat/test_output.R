@@ -8,20 +8,21 @@ dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
 test_that("Running default test", {
     gtfFile     <- file.path(dir, "test.gtf")
     samFile     <- file.path(dir, "test.sam")
-    object      <- RmmquantRun(gtfFile, samFile)
-    table       <- counts(object)
-    stats       <- stats(object)
+    se          <- RmmquantRun(gtfFile, samFile)
+    table       <- assays(se)[[1]]
+    stats       <- colData(se)
+    expect_is(se, "SummarizedExperiment")
     expect_is(table, "matrix")
-    expect_is(stats, "data.frame")
+    expect_is(stats, "DataFrame")
 })
 
 test_that("Running empty output", {
     gtfFile <- file.path(dir, "test.gtf")
     samFile <- file.path(dir, "test.sam")
-    object  <- RmmquantRun(annotationFile=gtfFile,
+    se      <- RmmquantRun(annotationFile=gtfFile,
                            readsFiles    =samFile,
                            overlap       =10000)
-    table   <- counts(object)
+    table   <- assays(se)$counts
     expect(is.matrix(table));
     expect_equal(dim(table), c(0, 1))
 })

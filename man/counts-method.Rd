@@ -14,13 +14,13 @@ counts(object)
 \item{object}{An \code{RmmquantClass} object.}
 }
 \value{
-The count matrix
+The count matrix, in a \code{SummarizedExperiment}
 }
 \description{
 Get the counts
 }
 \examples{
-example <- RmmquantExample()
+example <- RmmquantClassExample()
 counts(example)
 
 }

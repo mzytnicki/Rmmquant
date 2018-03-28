@@ -50,8 +50,6 @@ secondary map.}
 \item{\code{pcOverlapDiff}}{Ratio of overlap between a primary map and a
 secondary map.}
 
-\item{\code{counts}}{A matrix of the counts.}
-
-\item{\code{stats}}{A data frame of the quantification statistics.}
+\item{\code{counts}}{A \code{SummarizedExperiment} storing the counts.}
 }}
 

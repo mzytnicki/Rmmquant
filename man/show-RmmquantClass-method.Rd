@@ -17,7 +17,7 @@ A description of the object.
 Overloading the show method
 }
 \examples{
-example <- RmmquantExample()
+example <- RmmquantClassExample()
 example
 
 }

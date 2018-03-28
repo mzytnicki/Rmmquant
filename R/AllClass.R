@@ -18,7 +18,10 @@ validateRmmquant <- function(object) {
          (length(object@genomicRangesList) != 0)) |
         ((length(object@genomicRanges) != 0) &
          (length(object@genomicRangesList) != 0))) {
-        errors <- c(errors, "At least annotation inputs given.")
+        errors <- c(errors, "At least two annotation inputs given.")
+    }
+    if (length(object@readsFiles) == 0) {
+        errors <- c(errors, "At least one SAM/BAM file should be given.")
     }
     return(if (length(errors) == 0) TRUE else errors)
 }
@@ -48,8 +51,7 @@ validateRmmquant <- function(object) {
 #'                             secondary map.
 #' @slot pcOverlapDiff     Ratio of overlap between a primary map and a
 #'                             secondary map.
-#' @slot counts            A matrix of the counts.
-#' @slot stats             A data frame of the quantification statistics.
+#' @slot counts            A \code{SummarizedExperiment} storing the counts.
 setClass("RmmquantClass",
          representation(
              annotationFile    ="character",
@@ -69,12 +71,27 @@ setClass("RmmquantClass",
              formats           ="character",
              nOverlapDiff      ="numeric",
              pcOverlapDiff     ="numeric",
-             counts            = "matrix",
-             stats             = "data.frame"),
-         prototype(counts=matrix(), stats=data.frame()),
-         validity = validateRmmquant)
+             counts            ="SummarizedExperiment"),
+         prototype=list(
+                        readsFiles        =character(0),
+                        genomicRanges     =GRanges(),
+                        genomicRangesList =GRangesList(),
+                        sampleNames       =character(0),
+                        overlap           =NA_integer_,
+                        strands           =character(0),
+                        sorts             =logical(0),
+                        countThreshold    =NA_integer_,
+                        mergeThreshold    =NA_real_,
+                        printGeneName     =FALSE,
+                        quiet             =TRUE,
+                        progress          =FALSE,
+                        nThreads          =1,
+                        formats           =character(0),
+                        nOverlapDiff      =NA_integer_,
+                        pcOverlapDiff     =NA_real_),
+         validity=validateRmmquant)
 
-#' Main Rmmquant function, and constructor of the class.
+#' Main Rmmquant function.
 #'
 #' @param annotationFile    The annotation file
 #' @param readsFiles        The reads files
@@ -100,7 +117,7 @@ setClass("RmmquantClass",
 #' @param pcOverlapDiff     Ratio of overlap between a primary map and a
 #'                              secondary map.
 #' @param lazyload          Usual for S4 functions.
-#' @return                  A numeric matrix.
+#' @return                  A \code{SummerizedExperiment}.
 #' @examples
 #' dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
 #' gtfFile <- file.path(dir, "test.gtf")
@@ -109,7 +126,7 @@ setClass("RmmquantClass",
 #'
 #' @export
 RmmquantRun <- function(annotationFile    ="",
-                        readsFiles,
+                        readsFiles        =character(0),
                         genomicRanges     =GRanges(),
                         genomicRangesList =GRangesList(),
                         sampleNames       =character(0),
@@ -160,20 +177,18 @@ RmmquantRun <- function(annotationFile    ="",
                           formats,
                           nOverlapDiff,
                           pcOverlapDiff)
-    counts <- data$counts
-    if (is.null(colnames(counts))) {
-        colnames(counts) <- if (length(sampleNames) == 0) seq(ncol(counts))
-                            else sampleNames
-    }
-    stats <- as.data.frame(data$stats,
-                           row.names=make.names(colnames(counts),unique=TRUE))
-    object@counts <- counts
-    object@stats  <- stats
-    return(object)
+    counts           <- data$counts
+    stats            <- DataFrame(data$stats,
+                                  row.names=make.names(colnames(counts),
+                                                       unique=TRUE))
+    colnames(counts) <- rownames(stats)
+    object@counts    <- SummarizedExperiment(assays=list(counts=counts),
+                                             colData=stats)
+    return(object@counts)
 }
 
-#' Example constructor
-#' @return An \code{RmmquantClass} object
+#' Example of Rmmquant use
+#' @return An \code{SummarizedExperiement}.
 #'
 #' @examples
 #' example <- RmmquantExample()
@@ -186,12 +201,28 @@ RmmquantExample <- function() {
     return(RmmquantRun(gtfFile, samFile))
 }
 
+
+#' Example of Rmmquant constructor.
+#' @return An \code{RmmquantClass}.
+#'
+#' @examples
+#' example <- RmmquantExample()
+#'
+#' @export
+RmmquantClassExample <- function() {
+    dir     <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
+    gtfFile <- file.path(dir, "test.gtf")
+    samFile <- file.path(dir, "test.sam")
+    object  <- new("RmmquantClass", annotationFile=gtfFile, readsFiles=samFile)
+    return(object)
+}
+
 #' Overloading the show method
 #' @param object An \code{RmmquantClass} object.
 #' @return       A description of the object.
 #'
 #' @examples
-#' example <- RmmquantExample()
+#' example <- RmmquantClassExample()
 #' example
 #'
 #' @export
@@ -203,18 +234,16 @@ setMethod("show",
                     length(object@counts),
                     "):\n", sep="")
                 show(object@counts)
-                cat("Stats:\n")
-                show(object@stats)
             }
 )
 
 #' Get the counts
 #' @rdname counts-method
 #' @param  object  An \code{RmmquantClass} object.
-#' @return         The count matrix
+#' @return         The count matrix, in a \code{SummarizedExperiment}
 #'
 #' @examples
-#' example <- RmmquantExample()
+#' example <- RmmquantClassExample()
 #' counts(example)
 #'
 #' @export
@@ -225,21 +254,3 @@ setGeneric("counts", function(object) { standardGeneric("counts") } )
 setMethod("counts",
           signature(object="RmmquantClass"),
           function(object) { object@counts })
-
-#' Get the stats
-#' @rdname stats-method
-#' @param  object  An \code{RmmquantClass} object.
-#' @return         The stats data frame
-#'
-#' @examples
-#' example <- RmmquantExample()
-#' stats(example)
-#'
-#' @export
-setGeneric("stats", function(object) { standardGeneric("stats") } )
-
-#' @rdname stats-method
-#' @export
-setMethod("stats",
-          signature(object="RmmquantClass"),
-          function(object) { object@stats })
