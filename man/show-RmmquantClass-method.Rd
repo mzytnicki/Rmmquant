@@ -3,7 +3,7 @@
 \docType{methods}
 \name{show,RmmquantClass-method}
 \alias{show,RmmquantClass-method}
-\title{Overloading the show method}
+\title{Show the content of an \code{RmmquantClass} object.}
 \usage{
 \S4method{show}{RmmquantClass}(object)
 }
@@ -14,7 +14,7 @@
 A description of the object.
 }
 \description{
-Overloading the show method
+Show the content of an \code{RmmquantClass} object.
 }
 \examples{
 example <- RmmquantClassExample()

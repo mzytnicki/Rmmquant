@@ -4,7 +4,7 @@
 \name{counts}
 \alias{counts}
 \alias{counts,RmmquantClass-method}
-\title{Get the counts}
+\title{Get the counts table of an \code{RmmquantClass} object.}
 \usage{
 counts(object)
 
@@ -17,7 +17,7 @@ counts(object)
 The count matrix, in a \code{SummarizedExperiment}
 }
 \description{
-Get the counts
+Get the counts table of an \code{RmmquantClass} object.
 }
 \examples{
 example <- RmmquantClassExample()

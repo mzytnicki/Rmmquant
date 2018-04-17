@@ -70,3 +70,18 @@ test_that("Running genomic ranges list test", {
     dimnames(m) <- list(c("geneA"), c("test"))
     expect_equal(table, m)
 })
+
+test_that("Running with several threads", {
+    samFile     <- file.path(dir, "test.sam")
+    gr          <- GRanges(seqnames="chr1",
+                           ranges  =IRanges(1000, width=3000, names="geneA"),
+                           strand  ="+")
+    se          <- RmmquantRun(genomicRanges=gr,
+                               readsFiles   =c(samFile, samFile),
+                               sorts        =TRUE,
+                               nThreads     =6)
+    table       <- assays(se)$counts
+    m           <- matrix(c(1, 1), 1, 2)
+    dimnames(m) <- list(c("geneA"), c("test", "test.1"))
+    expect_equal(table, m)
+})

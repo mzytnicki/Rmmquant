@@ -1,12 +1,20 @@
 Package: Rmmquant
 Type: Package
 Title: RNA-Seq multi-mapping Reads Quantification Tool
-Version: 0.99.4
+Version: 0.99.5
 Date: 2017-12-08
 Authors@R: person("Zytnicki", "Matthias", email = "matthias.zytnicki@inra.fr",
   role = c("aut", "cre"))
-Maintainer: Matthias Zytnicki <matthias.zytnicki@inra.fr>
-Description: Multi-mapping aware gene quantification tool for RNA-Seq data.
+Description: RNA-Seq is currently used routinely, and it provides accurate
+  information on gene transcription. However, the method cannot accurately
+  estimate duplicated genes expression. Several strategies have been previously
+  used, but all of them provide biased results.
+  With Rmmquant, if a read maps at different positions, the tool detects that
+  the corresponding genes are duplicated; it merges the genes and creates a
+  merged gene. The counts of ambiguous reads is then based on the input genes
+  and the merged genes.
+  Rmmquant is a drop-in replacement of the widely used tools findOverlaps and
+  featureCounts that handles multi-mapping reads in an unabiased way.
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
@@ -20,11 +28,15 @@ Imports:
     GenomicRanges,
     SummarizedExperiment,
     devtools,
+    TxDb.Hsapiens.UCSC.hg38.knownGene,
+    org.Hs.eg.db,
+    DESeq2,
     BiocStyle
 LinkingTo: Rcpp
 RoxygenNote: 6.0.1
 biocViews:
-    GeneExpression
+    GeneExpression,
+    Transcription
 Suggests: knitr,
     rmarkdown,
     testthat

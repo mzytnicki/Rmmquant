@@ -2,7 +2,7 @@
 % Please edit documentation in R/AllClass.R
 \name{validateRmmquant}
 \alias{validateRmmquant}
-\title{Rmmquant object validation function}
+\title{Rmmquant object validation function.}
 \usage{
 validateRmmquant(object)
 }
@@ -13,5 +13,5 @@ validateRmmquant(object)
 \code{TRUE}, if succeed, otherwise a \code{character}.
 }
 \description{
-Rmmquant object validation function
+Rmmquant object validation function.
 }

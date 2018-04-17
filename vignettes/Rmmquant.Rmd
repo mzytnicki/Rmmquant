@@ -18,6 +18,9 @@ library("S4Vectors")
 library("SummarizedExperiment")
 library("knitr")
 library("rmarkdown")
+library("TxDb.Hsapiens.UCSC.hg38.knownGene")
+library("org.Hs.eg.db")
+library("DESeq2")
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 5, fig.height = 5)
 ```
@@ -49,6 +52,11 @@ output <- RmmquantRun(gtfFile, bamFile)
 ```
 In this example, the output is a `r Biocpkg("SummarizedExperiment")`.
 
+The matrix of counts can be accessed through:
+```{r, matrix}
+assays(output)$counts
+```
+
 Rmmquant expects at least two kinds of data:
 
 * annotation
@@ -61,11 +69,12 @@ All these notions are detailed hereafter.
 
 ## Package
 
-The Rmmquant package only consist in:
+The Rmmquant package mainly consists in one function, `RmmquantRun` function,
+that supports the options described hereafter,
 
-* the `RmmquantRun` function, that supports the options described hereafter,
-* the slot accessors `counts` and `stats`, that provide access to the count
-    table and the statistics of the alignment.
+Rmmquant also internally implements an S4 class, `RmmquantClass`, that stores
+all the inputs and the outputs of the `RmmquantRun` function, as well as a
+validator (that checks the consistency of the inputs).
 
 
 ## Inputs
@@ -294,16 +303,62 @@ using the `mergeThreshold=`$t$, a float in (0, 1). If $x < t \cdot y$,
 then the reads are transferred.
 
 
-## Using DESeq2
+## Use cases
 
-You can use DESeq2 right after Rmmquant this way:
-```{r, deseq2, eval=FALSE}
-rmmquantOutput <- RmmquantRun(gtfFile,
-                              c("wt1.bam", "wt2.bam", "wt3.bam",
-                                "ko1.bam", "ko2.bam", "ko3.bam"))
-dds <- DESeqDataSetFromMatrix(countData = assays(rmmquantOutput)$counts,
-                              colData = coldata,
-                              design = ~ condition)
+The next examples uses data generated in
+[this article](https://www.nature.com/articles/mp2013170) [@data],
+where the brain transcriptomes of patients diagnosed with bipolar disorder
+are compared to healthy ones.
+
+We have mapped the reads with STAR, selected the region chr21:42M-45M, and
+down-sampled to 10%, to have small BAM files.
+
+The reference genome is hg38.
+
+```{r, bamfiles}
+coldata           <- read.csv(file.path(dir, "data.csv"), row.names=1)
+coldata$condition <- factor(coldata$condition, levels = c("control", "BD"))
+bamFiles          <- file.path(dir, coldata$fileName)
+```
+
+
+### Extracting GenomicRanges from Annotation Database
+
+You can extract the annotation a BioConductor package, such as
+`r Biocpkg("TxDb.Hsapiens.UCSC.hg38.knownGene")`.
+
+```{r, annotation}
+allGR <- genes(TxDb.Hsapiens.UCSC.hg38.knownGene, filter=list(tx_chrom="chr21"))
+gr    <- allGR[start(allGR) >= 42000000 & end(allGR) <= 45000000]
+```
+
+The default gene IDs are Entrez ID [@entrez].
+If you prefer Ensembl IDs [@ensembl],
+you can modify the `r Biocpkg("GenomicRanges")` accordingly.
+Notice that some Entrez IDs have not Ensembl counterparts.
+```{r, ensembl}
+mcols(gr)$ensembl <- unlist(as.list(org.Hs.egENSEMBL[mcols(gr)$gene_id]))
+gr                <- gr[! is.na(mcols(gr)$ensembl), ]
+names(gr)         <- mcols(gr)$ensembl
+RmmquantRun(genomicRanges=gr, readsFiles=bamFiles, sorts=TRUE, nThreads=6)
+```
+
+
+### Using DESeq2
+
+DESeq2 can be executed right after Rmmquant.
+Here, we used the annotation extracted from Ensembl, GRCh38.76.
+
+```{r, deseq2}
+gtfFile           <- file.path(dir, "Homo_sapiens.gtf")
+output            <- RmmquantRun(gtfFile, bamFiles, sorts=TRUE, nThreads=6)
+dds               <- DESeqDataSetFromMatrix(countData=assays(output)$counts,
+                                            colData  =coldata,
+                                            design   =~ condition)
+dds               <- DESeq(dds)
+res               <- lfcShrink(dds, coef=2)
+res$padj          <- ifelse(is.na(res$padj), 1, res$padj)
+res[res$padj < 0.05, ]
 ```
 
 

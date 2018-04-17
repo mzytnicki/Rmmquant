@@ -1,4 +1,4 @@
-#' Rmmquant object validation function
+#' Rmmquant object validation function.
 #'
 #' @param object A \code{RmmquantClass} object.
 #' @return       \code{TRUE}, if succeed, otherwise a \code{character}.
@@ -217,7 +217,7 @@ RmmquantClassExample <- function() {
     return(object)
 }
 
-#' Overloading the show method
+#' Show the content of an \code{RmmquantClass} object.
 #' @param object An \code{RmmquantClass} object.
 #' @return       A description of the object.
 #'
@@ -237,7 +237,7 @@ setMethod("show",
             }
 )
 
-#' Get the counts
+#' Get the counts table of an \code{RmmquantClass} object.
 #' @rdname counts-method
 #' @param  object  An \code{RmmquantClass} object.
 #' @return         The count matrix, in a \code{SummarizedExperiment}

@@ -12,6 +12,11 @@
 #' @import SummarizedExperiment
 #' @import devtools
 #' @import BiocStyle
+#' @import TxDb.Hsapiens.UCSC.hg38.knownGene
+#' @import org.Hs.eg.db
+#' @importFrom DESeq2 DESeqDataSetFromMatrix
+#' @importFrom DESeq2 DESeq
+#' @importFrom DESeq2 lfcShrink
 #' @importFrom methods is
 #' @importFrom methods new
 #' @importFrom Rcpp evalCpp

@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <mutex>
 #include <algorithm>
 #include <iomanip>
+#include <cstdlib>
 #include <cmath>
 #include <cassert>
 #include <zlib.h>
@@ -156,12 +157,6 @@ struct HitsStats {
 };
 
 
-/*
-struct Globals {
-	static std::vector < std::string > chromosomes;
-};
-std::vector < std::string > allChromosomes {};
-*/
 std::vector < std::string > allChromosomes {};
 std::vector < std::pair < std::string, std::vector < unsigned int > > > outputTable {};
 std::vector < HitsStats > outputStats {};
