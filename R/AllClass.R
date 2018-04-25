@@ -20,8 +20,18 @@ validateRmmquant <- function(object) {
          (length(object@genomicRangesList) != 0))) {
         errors <- c(errors, "At least two annotation inputs given.")
     }
+    if ((object@annotationFile != "") & (! file.exists(object@annotationFile))){
+        errors <- c(errors, paste0("Cannot open the annotation file '",
+                                   object@annotationFile, "'."))
+    }
     if (length(object@readsFiles) == 0) {
         errors <- c(errors, "At least one SAM/BAM file should be given.")
+    }
+    for (fileName in object@readsFiles) {
+        if (! file.exists(fileName)) {
+            errors <- c(errors, paste0("Cannot open the SAM/BAM file '",
+                                       fileName, "'."))
+        }
     }
     return(if (length(errors) == 0) TRUE else errors)
 }

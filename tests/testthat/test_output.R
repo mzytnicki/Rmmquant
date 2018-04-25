@@ -26,8 +26,3 @@ test_that("Running empty output", {
     expect(is.matrix(table));
     expect_equal(dim(table), c(0, 1))
 })
-
-test_that("Running error", {
-    gtfFile <- file.path(dir, "test.gtf")
-    expect_error(RmmquantRun(annotationFile=gtfFile))
-})

@@ -350,14 +350,14 @@ DESeq2 can be executed right after Rmmquant.
 Here, we used the annotation extracted from Ensembl, GRCh38.76.
 
 ```{r, deseq2}
-gtfFile           <- file.path(dir, "Homo_sapiens.gtf")
-output            <- RmmquantRun(gtfFile, bamFiles, sorts=TRUE, nThreads=6)
-dds               <- DESeqDataSetFromMatrix(countData=assays(output)$counts,
-                                            colData  =coldata,
-                                            design   =~ condition)
-dds               <- DESeq(dds)
-res               <- lfcShrink(dds, coef=2)
-res$padj          <- ifelse(is.na(res$padj), 1, res$padj)
+gtfFile  <- file.path(dir, "Homo_sapiens.gtf")
+output   <- RmmquantRun(gtfFile, bamFiles, sorts=TRUE, nThreads=6)
+dds      <- DESeqDataSetFromMatrix(countData=assays(output)$counts,
+                                   colData  =coldata,
+                                   design   =~ condition)
+dds      <- DESeq(dds)
+res      <- lfcShrink(dds, coef=2)
+res$padj <- ifelse(is.na(res$padj), 1, res$padj)
 res[res$padj < 0.05, ]
 ```
 

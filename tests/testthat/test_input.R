@@ -85,3 +85,26 @@ test_that("Running with several threads", {
     dimnames(m) <- list(c("geneA"), c("test", "test.1"))
     expect_equal(table, m)
 })
+
+
+test_that("Running with no BAM/SAM file", {
+    gtfFile <- file.path(dir, "test.gtf")
+    expect_error(RmmquantRun(annotationFile=gtfFile))
+})
+
+test_that("Running with no GTF file", {
+    samFile <- file.path(dir, "test.sam")
+    expect_error(RmmquantRun(readsFiles=samFile))
+})
+
+test_that("Running with wrong SAM/BAM file name", {
+    gtfFile     <- file.path(dir, "test.gtf")
+    samFile     <- file.path(dir, "xxxx.sam")
+    expect_error(RmmquantRun(annotationFile=gtfFile, readsFiles=samFile))
+})
+
+test_that("Running with wrong GTF file name", {
+    gtfFile     <- file.path(dir, "xxxx.gtf")
+    samFile     <- file.path(dir, "test.sam")
+    expect_error(RmmquantRun(annotationFile=gtfFile, readsFiles=samFile))
+})
