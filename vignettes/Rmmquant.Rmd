@@ -18,8 +18,9 @@ library("S4Vectors")
 library("SummarizedExperiment")
 library("knitr")
 library("rmarkdown")
-library("TxDb.Hsapiens.UCSC.hg38.knownGene")
-library("org.Hs.eg.db")
+library("TBX20BamSubset")
+library("TxDb.Mmusculus.UCSC.mm9.knownGene")
+library("org.Mm.eg.db")
 library("DESeq2")
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 5, fig.height = 5)
@@ -306,52 +307,49 @@ then the reads are transferred.
 ## Use cases
 
 The next examples uses data generated in
-[this article](https://www.nature.com/articles/mp2013170) [@data],
-where the brain transcriptomes of patients diagnosed with bipolar disorder
-are compared to healthy ones.
-
-We have mapped the reads with STAR, selected the region chr21:42M-45M, and
-down-sampled to 10%, to have small BAM files.
-
-The reference genome is hg38.
+`r Biocpkg("TBX20BamSubset")`,
+where the expression of the genes is compared between the wild type and
+the TXB20 knock-out mice.
+The data have been mapped to the mm9 reference, and restricted to chromosome 19.
 
 ```{r, bamfiles}
-coldata           <- read.csv(file.path(dir, "data.csv"), row.names=1)
-coldata$condition <- factor(coldata$condition, levels = c("control", "BD"))
-bamFiles          <- file.path(dir, coldata$fileName)
+bamFiles    <- getBamFileList()
+sampleNames <- names(bamFiles)
 ```
 
 
 ### Extracting GenomicRanges from Annotation Database
 
 You can extract the annotation a BioConductor package, such as
-`r Biocpkg("TxDb.Hsapiens.UCSC.hg38.knownGene")`.
+`r Biocpkg("TxDb.Mmusculus.UCSC.mm9.knownGene")`.
 
 ```{r, annotation}
-allGR <- genes(TxDb.Hsapiens.UCSC.hg38.knownGene, filter=list(tx_chrom="chr21"))
-gr    <- allGR[start(allGR) >= 42000000 & end(allGR) <= 45000000]
+gr <- genes(TxDb.Mmusculus.UCSC.mm9.knownGene, filter=list(tx_chrom="chr19"))
 ```
 
 The default gene IDs are Entrez ID [@entrez].
 If you prefer Ensembl IDs [@ensembl],
 you can modify the `r Biocpkg("GenomicRanges")` accordingly.
-Notice that some Entrez IDs have not Ensembl counterparts.
+Notice that Entrez IDs may have zero, one, or more Ensembl counterparts.
+
 ```{r, ensembl}
-mcols(gr)$ensembl <- unlist(as.list(org.Hs.egENSEMBL[mcols(gr)$gene_id]))
-gr                <- gr[! is.na(mcols(gr)$ensembl), ]
-names(gr)         <- mcols(gr)$ensembl
-RmmquantRun(genomicRanges=gr, readsFiles=bamFiles, sorts=TRUE, nThreads=6)
+ensemblIds <- sapply(as.list(org.Mm.egENSEMBL[mappedkeys(org.Mm.egENSEMBL)])
+                     [mcols(gr)$gene_id], `[[`, 1)
+gr         <- gr[! is.na(names(ensemblIds)), ]
+names(gr)  <- unlist(ensemblIds)
 ```
 
 
 ### Using DESeq2
 
 DESeq2 can be executed right after Rmmquant.
-Here, we used the annotation extracted from Ensembl, GRCh38.76.
 
 ```{r, deseq2}
-gtfFile  <- file.path(dir, "Homo_sapiens.gtf")
-output   <- RmmquantRun(gtfFile, bamFiles, sorts=TRUE, nThreads=6)
+output   <- RmmquantRun(genomicRanges=gr, readsFiles=bamFiles, sorts=TRUE)
+#output   <- RmmquantRun(genomicRanges=gr, readsFiles=bamFiles, sampleNames=sampleNames, sorts=TRUE, nThreads=6)
+coldata <- data.frame(condition=factor(c(rep("control", 3), rep("KO", 3)),
+                                       levels=c("control", "KO")),
+                      row.names=sampleNames)
 dds      <- DESeqDataSetFromMatrix(countData=assays(output)$counts,
                                    colData  =coldata,
                                    design   =~ condition)

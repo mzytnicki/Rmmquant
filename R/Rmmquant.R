@@ -12,8 +12,9 @@
 #' @import SummarizedExperiment
 #' @import devtools
 #' @import BiocStyle
-#' @import TxDb.Hsapiens.UCSC.hg38.knownGene
-#' @import org.Hs.eg.db
+#' @import TBX20BamSubset
+#' @import TxDb.Mmusculus.UCSC.mm9.knownGene
+#' @import org.Mm.eg.db
 #' @importFrom DESeq2 DESeqDataSetFromMatrix
 #' @importFrom DESeq2 DESeq
 #' @importFrom DESeq2 lfcShrink

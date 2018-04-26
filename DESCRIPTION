@@ -28,8 +28,9 @@ Imports:
     GenomicRanges,
     SummarizedExperiment,
     devtools,
-    TxDb.Hsapiens.UCSC.hg38.knownGene,
-    org.Hs.eg.db,
+    TBX20BamSubset,
+    TxDb.Mmusculus.UCSC.mm9.knownGene,
+    org.Mm.eg.db,
     DESeq2,
     BiocStyle
 LinkingTo: Rcpp
