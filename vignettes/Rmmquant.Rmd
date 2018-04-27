@@ -345,8 +345,8 @@ names(gr)  <- unlist(ensemblIds)
 DESeq2 can be executed right after Rmmquant.
 
 ```{r, deseq2}
-output   <- RmmquantRun(genomicRanges=gr, readsFiles=bamFiles, sorts=TRUE)
-#output   <- RmmquantRun(genomicRanges=gr, readsFiles=bamFiles, sampleNames=sampleNames, sorts=TRUE, nThreads=6)
+output   <- RmmquantRun(genomicRanges=gr, readsFiles=bamFiles,
+                        sampleNames=sampleNames, sorts=TRUE)
 coldata <- data.frame(condition=factor(c(rep("control", 3), rep("KO", 3)),
                                        levels=c("control", "KO")),
                       row.names=sampleNames)

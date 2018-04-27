@@ -1982,6 +1982,9 @@ Rcpp::List rcpp_Rmmquant (
     if (nOverlapDiff                     != NA_INTEGER) parameters.setNOverlapDifference(nOverlapDiff);
     if (pcOverlapDiff                    != NA_REAL)    parameters.setPcOverlapDifference(pcOverlapDiff);
     start(parameters);
+    if (outputTable.empty()) {
+        MMERR << "Warning!  Count table is empty.\n";
+    }
     Rcpp::NumericMatrix matrix(outputTable.size(), parameters.names.size());
     Rcpp::CharacterVector rowNames(outputTable.size()), colNames(parameters.names.size());
     for (size_t i = 0; i < parameters.names.size(); ++i) {
