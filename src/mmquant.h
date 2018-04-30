@@ -1300,7 +1300,7 @@ class GeneList {
 						geneHash.push_back(std::unordered_map<std::string, unsigned int>());
 						chromosome = parsedLine.getChromosome();
 						bool seen = false;
-						for (unsigned int i = 0; (i < allChromosomes.size()) && (! seen); i++) {
+						for (int i = allChromosomes.size()-1; (i >= 0) && (! seen); --i) {
 							if (allChromosomes[i] == chromosome) {
 								chromosomeId = i;
 								seen         = true;
@@ -1374,6 +1374,7 @@ class GeneList {
             std::string  tmp;
             tmp        = strandValuesLevels[strandValues[0]-1];
             thisStrand = tmp;
+            allChromosomes.clear();
             for (auto &seqname: seqnamesValuesLevels) {
                 allChromosomes.push_back(Rcpp::as<std::string>(seqname));
             }
@@ -1424,6 +1425,7 @@ class GeneList {
             gene.setId(tmp);
             tmp        = strandValuesLevels[strandValues[0]-1];
             thisStrand = tmp;
+            allChromosomes.clear();
             for (auto &seqname: seqnamesValuesLevels) {
                 allChromosomes.push_back(Rcpp::as<std::string>(seqname));
             }
@@ -1491,7 +1493,6 @@ class GeneList {
 					}
 				}
 			}
-		    
 		}
 		void scan(Read &read, std::vector <unsigned int> &matchingGenes, GeneListPosition &position, Strandedness strandedness, bool sorted) {
 			if (sorted) {
