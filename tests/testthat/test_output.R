@@ -1,6 +1,6 @@
-library(Rmmquant)
-library(testthat)
-library(GenomicRanges)
+suppressWarnings(suppressMessages(library(Rmmquant)))
+suppressWarnings(suppressMessages(library(testthat)))
+suppressWarnings(suppressMessages(library(GenomicRanges)))
 
 context("Output tests")
 dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
@@ -19,10 +19,11 @@ test_that("Running default test", {
 test_that("Running empty output", {
     gtfFile <- file.path(dir, "test.gtf")
     samFile <- file.path(dir, "test.sam")
-    se      <- RmmquantRun(annotationFile=gtfFile,
-                           readsFiles    =samFile,
-                           overlap       =10000)
-    table   <- assays(se)$counts
+    invisible(capture.output(se <- RmmquantRun(annotationFile=gtfFile,
+                                               readsFiles    =samFile,
+                                               overlap       =10000),
+                             type="message"))
+    table <- assays(se)$counts
     expect(is.matrix(table));
     expect_equal(dim(table), c(0, 1))
 })

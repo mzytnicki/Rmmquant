@@ -9,8 +9,8 @@ RmmquantRun(annotationFile = "", readsFiles = character(0),
   sampleNames = character(0), overlap = NA_integer_,
   strands = character(0), sorts = logical(0),
   countThreshold = NA_integer_, mergeThreshold = NA_real_,
-  printGeneName = FALSE, quiet = TRUE, progress = FALSE, nThreads = 1,
-  formats = character(0), nOverlapDiff = NA_integer_,
+  printGeneName = FALSE, quiet = TRUE, progress = FALSE,
+  nThreads = 1, formats = character(0), nOverlapDiff = NA_integer_,
   pcOverlapDiff = NA_real_, lazyload = FALSE)
 }
 \arguments{
