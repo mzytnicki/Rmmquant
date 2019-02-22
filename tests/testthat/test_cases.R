@@ -1,6 +1,6 @@
-library(Rmmquant)
-library(testthat)
-library(GenomicRanges)
+suppressWarnings(suppressMessages(library(Rmmquant)))
+suppressWarnings(suppressMessages(library(testthat)))
+suppressWarnings(suppressMessages(library(GenomicRanges)))
 
 context("Case tests")
 dir <- system.file("extdata", package="Rmmquant", mustWork = TRUE)
