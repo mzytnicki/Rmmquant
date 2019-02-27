@@ -1,7 +1,7 @@
 Package: Rmmquant
 Type: Package
 Title: RNA-Seq multi-mapping Reads Quantification Tool
-Version: 1.0.3
+Version: 1.0.4
 Date: 2019-01-21
 Authors@R: person("Zytnicki", "Matthias", email = "matthias.zytnicki@inra.fr",
   role = c("aut", "cre"))
@@ -20,7 +20,7 @@ Encoding: UTF-8
 LazyData: true
 SystemRequirements: C++11
 Depends:
-    R (>= 3.6)
+    R (>= 3.5)
 Imports:
     Rcpp (>= 0.12.8),
     methods,
