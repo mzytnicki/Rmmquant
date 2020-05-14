@@ -225,6 +225,7 @@ static const float        PC_OVERLAP_DIFFERENCES =     2.0;
 static const unsigned int BIN_SIZE               = 16384;
 static const bool         FEATURE_COUNT_STYLE    = false;
 static const bool         PRINT_GENE_NAME        = false;
+static const bool         PRINT_REPEAT           = false;
 static const bool         ALL_SORTED             = true;
 static const bool         PROGRESS               = false;
 static const bool         QUIET                  = false;
@@ -265,6 +266,7 @@ struct MmquantParameters {
   bool         featureCountStyle   { FEATURE_COUNT_STYLE    };
   bool         allSorted           { ALL_SORTED             };
   bool         printGeneName       { PRINT_GENE_NAME        };
+  bool         printRepeat         { PRINT_REPEAT           };
   bool         progress            { PROGRESS               };
   bool         quiet               { QUIET                  };
   
@@ -290,6 +292,7 @@ struct MmquantParameters {
     MMERR <<     "\t\t-g: print gene name instead of gene ID in the output file\n";
     MMERR <<     "\t\t-O file_name: print statistics to a file instead of stderr\n";
     MMERR <<     "\t\t-F: use featureCounts output style\n";
+    MMERR <<     "\t\t-A: if a read maps a gene n times, print the name of the gene n times\n";
     MMERR <<     "\t\t-p: print progress\n";
     MMERR <<     "\t\t-t integer: # threads (default: " << N_THREADS << ")\n";
     MMERR <<     "\t\t-v: version" << "\n";
@@ -401,6 +404,10 @@ struct MmquantParameters {
     featureCountStyle = b;
   }
   
+  void setRepeatPrint(bool b) {
+    printRepeat = b;
+  }
+  
   void setQuiet(bool b) {
     quiet = b;
   }
@@ -501,6 +508,9 @@ struct MmquantParameters {
         }
         else if (s == "-F") {
           setFeatureCountStyle(true);
+        }
+        else if (s == "-A") {
+          setRepeatPrint(true);
         }
         else if (s == "-p") {
           setProgress(true);
@@ -637,6 +647,10 @@ struct MmquantParameters {
     }
     if (std::isnan(pcOverlapDifference)) {
         pcOverlapDifference = PC_OVERLAP_DIFFERENCES;
+    }
+    if (nThreads > nInputs) {
+        MMERR << "Reducing the number of threads to " << nInputs << " (the number of input files)." << std::endl;
+        nThreads = nInputs;
     }
     return EXIT_SUCCESS;
   }
@@ -1548,9 +1562,11 @@ class Counter {
     MmquantParameters &parameters;
     void addGeneCount (const std::vector <unsigned int> &g) {
       std::vector <unsigned int> s(g.begin(), g.end());
-      sort(s.begin(), s.end());
-      std::vector<unsigned int>::iterator it = unique(s.begin(), s.end());
-      s.resize(distance(s.begin(), it)); 
+      if (! parameters.printRepeat) {
+        sort(s.begin(), s.end());
+        std::vector<unsigned int>::iterator it = unique(s.begin(), s.end());
+        s.resize(distance(s.begin(), it)); 
+      }
       geneCounts[s]++;
     }
     void addCount(std::string &read, std::vector <unsigned int> &matchingGenes, unsigned int nHits) {
@@ -1674,25 +1690,24 @@ class TableCount {
     std::unordered_map<std::vector<unsigned int>, std::vector<unsigned int>> geneCounts;
     MmquantParameters &parameters;
   public:
-    TableCount(MmquantParameters &p, GeneList &g): geneList(g), nColumns(0), parameters(p) {}
+    TableCount(MmquantParameters &p, GeneList &g): geneList(g), nColumns(p.nInputs), parameters(p) {}
     std::vector<std::pair<std::string, std::vector<unsigned int>>> &getTable () {
       return selectedTable;
     }
-    void addCounter(Counter &counter) {
+    void addCounter(Counter &counter, unsigned int columnId) {
       auto &counts = counter.getCounts();
       for (auto &count: counts) {
         auto p = geneCounts.find(count.first);
         if (p == geneCounts.end()) {
-          geneCounts[count.first] = std::vector <unsigned int> (parameters.nInputs, 0);
-          std::vector <unsigned int> v (parameters.nInputs, 0);
-          v[nColumns] = count.second;
+          geneCounts[count.first] = std::vector <unsigned int> (nColumns, 0);
+          std::vector <unsigned int> v (nColumns, 0);
+          v[columnId] = count.second;
           geneCounts[count.first] = v;
         }
         else {
-          p->second[nColumns] = count.second;
+          p->second[columnId] = count.second;
         }
       }
-      ++nColumns;
     }
     void selectGenes() {
       unsigned int nGenes = geneCounts.size();
@@ -1862,7 +1877,7 @@ static void doWork (MmquantParameters &parameters, GeneList &geneList, TableCoun
     counter.read(parameters.readsFileNames[thisI], parameters.strandednesses[thisI], parameters.strandednessFunctions[thisI], parameters.sortednesses[thisI], parameters.formats[thisI]);
     stats[thisI] = counter.getStats();
     m2.lock();
-    table.addCounter(counter);
+    table.addCounter(counter, thisI);
     m2.unlock();
   }
 }

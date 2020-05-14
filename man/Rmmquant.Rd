@@ -3,7 +3,6 @@
 \docType{package}
 \name{Rmmquant}
 \alias{Rmmquant}
-\alias{Rmmquant-package}
 \title{Rmmquant: RNA-Seq multi-mapping Reads Quantification Tool}
 \description{
 Counts the number of reads per gene.
