@@ -122,11 +122,11 @@ static void join(std::vector <std::string> &inStrings, std::string &outString, c
 }
 
 static inline void ltrim(std::string &s) {
-  s.erase(s.begin(), find_if(s.begin(), s.end(), not1(std::ptr_fun<int, int>(isspace))));
+  s.erase(s.begin(), find_if(s.begin(), s.end(), [](unsigned char c){ return !std::isspace(c); }));
 }
 
 static inline void rtrim(std::string &s) {
-  s.erase(find_if(s.rbegin(), s.rend(), not1(std::ptr_fun<int, int>(isspace))).base(), s.end());
+  s.erase(find_if(s.rbegin(), s.rend(), [](unsigned char c){ return !std::isspace(c); }).base(), s.end());
 }
 
 static inline void trim(std::string &s) {

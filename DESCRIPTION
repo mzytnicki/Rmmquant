@@ -1,8 +1,8 @@
 Package: Rmmquant
 Type: Package
 Title: RNA-Seq multi-mapping Reads Quantification Tool
-Version: 1.8.0
-Date: 2020-05-14
+Version: 1.8.1
+Date: 2021-01-05
 Authors@R: person("Zytnicki", "Matthias", email = "matthias.zytnicki@inra.fr",
   role = c("aut", "cre"))
 Description: RNA-Seq is currently used routinely, and it provides accurate

@@ -24,6 +24,6 @@ test_that("Running empty output", {
                                                overlap       =10000),
                              type="message"))
     table <- assays(se)$counts
-    expect(is.matrix(table));
+    expect_is(table, "matrix")
     expect_equal(dim(table), c(0, 1))
 })
