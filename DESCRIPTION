@@ -32,6 +32,7 @@ Imports:
     TxDb.Mmusculus.UCSC.mm9.knownGene,
     org.Mm.eg.db,
     DESeq2,
+    apeglm,
     BiocStyle
 LinkingTo: Rcpp
 RoxygenNote: 7.0.2
