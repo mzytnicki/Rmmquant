@@ -9,6 +9,7 @@ vignette: >
   %\VignetteIndexEntry{The Rmmquant package}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
+  %\VignetteDepends{apeglm}
 ---
 
 ```{r setup_knitr, include = FALSE, cache = FALSE}
